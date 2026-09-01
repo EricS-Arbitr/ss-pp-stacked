@@ -52,6 +52,28 @@ extract_playbook_roles() {
   ' "$1"
 }
 
+# Extract roles invoked as TASKS rather than in a `roles:` block --
+# `import_role:` / `include_role:` with a `name:` on the following lines.
+#
+# vyos_mirror is invoked exactly this way from playbooks/20-vyos.yml, which
+# uses two plays with different connection types and therefore cannot use a
+# plain roles: block. Without this it was absent from the tarball while every
+# other Security Onion role was present -- the kind of partial success that
+# reads as working.
+extract_task_roles() {
+  awk '
+    /(import_role|include_role):/ { inrole=1; next }
+    inrole && /name:[[:space:]]*[a-zA-Z0-9_-]+/ {
+      sub(/^.*name:[[:space:]]*/, "")
+      sub(/[ \t#].*$/, "")
+      if (length($0) > 0) print
+      inrole=0
+      next
+    }
+    inrole && /^[[:space:]]*-/ { inrole=0 }
+  ' "$1"
+}
+
 # Extract role-dependency names from a meta/main.yml.
 extract_meta_deps() {
   [ -f "$1" ] || return 0
@@ -139,7 +161,22 @@ fi
 
 seen=()
 queue=()
-while IFS= read -r r; do queue+=("$r"); done < <(extract_playbook_roles "$PLAYBOOK")
+# Scan the range playbook AND every phase playbook. Discovering roles from
+# $PLAYBOOK alone silently omitted all seven Security Onion roles on
+# 2026-09-01: they are referenced only from playbooks/, so the tarball built,
+# validated and shipped without them. A range would have failed at the first
+# SO play with "the role 'so_base' was not found".
+#
+# The phase playbooks use two-space `roles:` indentation like the range
+# playbook, so extract_playbook_roles handles them unchanged.
+PLAYBOOK_SOURCES=("$PLAYBOOK")
+for pb in "$SS_PP_AB"/playbooks/*.yml; do
+  [ -f "$pb" ] && PLAYBOOK_SOURCES+=("$pb")
+done
+for pb in "${PLAYBOOK_SOURCES[@]}"; do
+  while IFS= read -r r; do queue+=("$r"); done < <(extract_playbook_roles "$pb")
+  while IFS= read -r r; do queue+=("$r"); done < <(extract_task_roles "$pb")
+done
 
 missing=()
 while [ ${#queue[@]} -gt 0 ]; do
