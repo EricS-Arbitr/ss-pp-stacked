@@ -1,0 +1,259 @@
+domain_admin: "simspace"
+domain_admin_password: "Simspace1!Simspace1!"
+cs_certs:
+  - "https://nexus.dev.ng.simspace.lan/repository/ng_raw/certificates/DigiCertHighAssuranceEVRootCA.crt"
+  - "https://nexus.dev.ng.simspace.lan/repository/ng_raw/certificates/DigiCertGlobalRootG2.crt"
+  - "https://nexus.dev.ng.simspace.lan/repository/ng_raw/certificates/DigiCertAssuredIDRootCA.crt"
+ms_cert: "https://nexus.dev.ng.simspace.lan/repository/ng_raw/certificates/MicrosoftIdentityVerificationRootCert2020.crt"
+
+# Upstream proxy configuration
+inet_proxy_addr: "10.255.240.1"
+inet_proxy_port: "3128"
+
+# Container name for the global DNS simulator (referenced by handlers role)
+global_dns_container_name: "is-inet"
+
+# Splunk server + forwarder shared config
+splunk_admin: "admin"
+splunk_admin_password: "simspace1"
+splunk_user: "admin"
+splunk_password: "simspace1"
+# splunk_server_ip: RETIRED 2026-08-19. It meant "the indexer" and pointed at
+# 172.16.9.20, which is now the ES search head and receives nothing. Retired
+# rather than redefined so nothing inherits the old meaning by accident.
+#
+# Its consumers were migrated deliberately: outputs.conf.j2 now renders the
+# splunk_indexers list, and the splunk-forwarder play's `when:` gate -- which
+# tested `splunk_server_ip is defined` -- now tests splunk_indexers. Leaving
+# that gate would have silently SKIPPED the entire forwarder play the moment
+# this line was deleted, and a skipped play reports as a clean run.
+splunk_forwarder_port: "9997"
+
+# --- Distributed Splunk (blueprint ARBITR_PP_147.yml) ---------------------
+# Build sheet: docs/splunk/pp-splunk-distributed-build-sheet.md
+#
+# Cutover completed 2026-08-19: the cluster reported both peers Up and both
+# factors met before forwarders were repointed here.
+splunk_indexers:
+  - "172.16.9.21"                       # pp-splunk-idx01
+  - "172.16.9.22"                       # pp-splunk-idx02
+splunk_cluster_manager_ip: "172.16.9.23"
+splunk_search_head_ip: "172.16.9.20"    # pp-splunk, analyst-facing
+splunk_replication_port: "9887"
+splunk_mgmt_port: "8089"
+splunk_rf: 2
+splunk_sf: 2
+splunk_cluster_label: "pp-idxc"
+
+# Shared cluster secret. Must be IDENTICAL on the manager, every peer and the
+# search head -- a mismatch shows up as peers that never appear in
+# `splunk show cluster-status`, with the reason only in splunkd.log.
+# Plaintext here to match splunk_admin_password above; this repo has no vault.
+splunk_cluster_secret: "Simspace1!ClusterSecret"
+
+# Indexes the cluster must serve. These are pushed to the PEERS through the
+# cluster manager's manager-apps, never created on a peer directly -- a peer
+# with a hand-made index is not part of the cluster's definition of itself and
+# drifts on the next bundle push.
+splunk_cluster_indexes:
+  - windows
+  - sysmon
+  - linux
+  - netfw
+  - proxy
+  - mail
+
+# Scoped, search-only account used by verify_deployment.sh section 10 so the
+# verifier never needs the admin credential. Role definition and capability
+# grant live in roles/splunk-verify-user/. Kept here in plaintext to match the
+# existing convention above -- this repo has no vault; moving ALL Splunk
+# credentials behind one is a separate decision, not a side effect of adding
+# a verification account.
+splunk_verify_password: "simspace1"
+
+# --- Windows DNS Server query logging (pp-dc01/02/03) ---------------------
+# Splunk_TA_windows ships NO input for the modern
+# Microsoft-Windows-DNS-Server/Analytical ETW channel. Its only per-query
+# mechanism is the legacy file-based debug log, read with MonitorNoHandle
+# (the input type for files a service holds open exclusively):
+#
+#   [MonitorNoHandle://$WINDIR\System32\Dns\dns.log]
+#   sourcetype = MSAD:NT6:DNS
+#
+# WHY BOTHER, given Sysmon already logs DNS: Sysmon's EventCode 22 records the
+# querying process but NOT which server answered, and carries no message_type
+# or record_type. Those are properties of the transaction the server sees and
+# the client cannot. Measured 2026-08-18: DNS.message_type was "unknown" for
+# 100% of 4,461 events, which blanks every ES DNS panel that filters on it.
+# The two sources are complementary -- Sysmon says which process asked, the DC
+# says what was asked and answered.
+#
+# COST: DNS debug logging is not free. It writes every query to disk on a
+# domain controller, and it is NOT bounded -- see dns_debug_log_rollover below.
+# Check the file size after a day of real traffic before enabling emulated
+# users.
+dns_debug_logging: true
+
+# Whether an empty dns.log ABORTS the deploy. Default false, deliberately.
+#
+# This is supplementary telemetry: Sysmon already provides client-side DNS, and
+# the DC logs add message_type/dest/record_type on top. On 2026-08-21 a hard
+# failure here burned three full deploy attempts on a range where every other
+# host was green -- a nice-to-have blocking a working build.
+#
+# The gap is still reported, twice: this play prints a loud warning, and
+# verify_deployment.sh section 10's DNSSRV check fails until the DC logs
+# actually reach Network_Resolution. The deploy builds; the verifier judges.
+dns_debug_fail_on_empty: false
+
+# ROLLOVER OFF. This is the only configuration we have direct evidence works.
+#
+# 2026-08-18 measured, on a range where the log had been stuck at 0 bytes
+# through three enable attempts and a service restart: turning rollover OFF
+# filled it to 646 KB in twenty seconds. That is the one causal observation we
+# have.
+#
+# What we do NOT have evidence for is rollover ON working at any size. It was
+# assumed to work afterwards because the log held 11 MB -- but that data had
+# accumulated during the rollover-off window, and the task that reported it
+# read a stale pre-restart stat. A fresh range on 2026-08-21 put it beyond
+# doubt: three brand-new DCs, rollover on, MaxMBFileSize 500, log permanently
+# empty on all three across three deploy attempts.
+#
+# MaxMBFileSize is also not trustworthy on this build: setting 500 read back as
+# 65536, so the value written is not the value stored. Both settings are left
+# out of the call entirely rather than passed with numbers we cannot predict.
+#
+# CONSEQUENCE: dns.log grows unbounded. With FullPackets off the rate is far
+# below the 646 KB/20s measured with it on, and this range is rebuilt between
+# exercises -- but the file size is worth watching, and bounding it will need a
+# mechanism other than DNS's own rollover.
+dns_debug_log_rollover: false
+
+# Minimum bytes the log must reach after generated traffic.
+#
+# 4096, down from 50000. The larger figure existed to catch a byte-interpreted
+# MaxMBFileSize holding the file under ~500 bytes -- and that parameter is no
+# longer passed at all, so the reason for it is gone.
+#
+# It was also wrong in practice. On 2026-08-21 pp-dc01 cleared 50000 easily
+# while pp-dc02 and pp-dc03 did not, and the difference was not configuration:
+# dc01 is the primary resolver and answers nearly every query in the range,
+# while the secondaries sit almost idle on a fresh build. The check was
+# measuring how busy a DC is, not whether logging works.
+#
+# 4096 still distinguishes the two states that matter. DNS writes a multi-line
+# header (~1-2 KB) the moment logging is enabled, so "header only" and "header
+# plus records" are separable -- and the play generates its own queries against
+# each server precisely so a quiet DC still has something to log.
+dns_debug_log_min_bytes: 4096
+
+# The path DNS writes to and the forwarder monitors. Both sides must agree --
+# the play sets LogFilePath to this and win_inputs.conf.j2 points
+# MonitorNoHandle at the same value, so they cannot drift apart.
+dns_debug_log_path: 'C:\Windows\System32\dns\dns.log'
+
+# Central syslog collector. All Linux/VyOS/pfSense hosts forward to this IP.
+# pp-syslog runs rsyslog listening on UDP+TCP 514, writes per-host files at
+# /var/log/remote/<hostname>/syslog.log, and the Splunk UF on pp-syslog
+# tails them into Splunk (netfw index for vyos/pfsense, linux for Linux).
+syslog_server_ip: "172.16.2.9"           # pp-syslog's PP-Services IP
+
+# Splunk indices created by the splunk role on pp-splunk.
+# Grouped by CIM data model / log volume: Sysmon is split out from
+# the rest of the Windows event logs because of volume + security value.
+# Volumes MEASURED on pp-splunk 2026-08-18 over 7 days. Three of these were
+# annotated "Currently unused" and are not -- the comments predated the syslog
+# and Squid wiring. Corrected here because roles/splunk-verify-user's visibility
+# gate needs to know which indexes genuinely carry data.
+indices:
+  - name: "windows"       # 482,345 / 7d — Win event logs (System/Security/Application/Firewall/PowerShell)
+  - name: "sysmon"        # 406,052 / 7d — Sysmon; ACTIVE, not unused
+  - name: "linux"         # 330,082 / 7d — Linux syslog
+  - name: "netfw"         # 432,247 / 7d — pfSense/VyOS syslog via pp-syslog; ACTIVE, not unused
+  - name: "proxy"         # 151,403 / 7d — Squid access logs; ACTIVE, not unused
+  - name: "mail"          #       0 / 7d — still reserved for Exchange when wired up
+
+
+
+# --- Email service (is-inet Postfix/Dovecot/webmail via `email` role) ------
+# Multi-domain mail stack on is-inet. Each entry drives cert generation,
+# Postfix config, Dovecot SSL blocks, and a webmail config. Mailboxes are
+# provisioned from each domain's `DomainUsers` list (group_vars/voltgrid.yml).
+#
+# Bare-domain naming (voltgrid.com, outlook.com) — NOT mail.<domain> — so
+# webmail login accepts `bob.burke@voltgrid.com` (which is what users
+# expect). The email role uses this same string as (a) the CN/SAN on the
+# generated TLS cert Dovecot presents, (b) the imap_host/smtp_host in the
+# webmail's domain ini file, and (c) the login domain the webmail form
+# matches against. Requires bare-domain A records under `global_dns_records`
+# below so the container's IMAP client can resolve `voltgrid.com` and
+# `outlook.com` to is-inet.
+#
+# Webmail UI is still accessed via the browser URL http://mail.outlook.com/
+# — the prebuilt email container image only has an httpd vhost for that
+# name. Login form accepts any configured email_domain regardless of which
+# URL you reached it on.
+email_domains:
+  - name: "voltgrid.com"
+  - name: "outlook.com"
+
+# --- Simulated public DNS on is-inet (populated by `global_dns` role) -----
+# Every record's `value` must be an IP that traffic can actually reach:
+#   - www / billing.voltgrid.com  → pp-external-firewall WAN (75.21.1.1)
+#     NAT'd inbound to pp-www (172.16.8.5) — see pp-external-firewall
+#     host_vars pfsense_nat_rules
+#   - mail.voltgrid.com           → is-inet's primary interface (200.200.200.2)
+#     where Postfix/Dovecot listens
+#   - mail.outlook.com            → 52.96.223.2, a lo alias is-inet claims
+#     for the Microsoft-owned range (per range-dev convention)
+#
+# Anything pointing at 200.200.200.1 would land on pp-isp-router (a VyOS
+# BGP router with no web/mail services) and time out — that value used to
+# be here and is intentionally corrected.
+global_dns_records:
+  # --- voltgrid.com public web (NAT-reflected through pp-external-firewall) ---
+  - name: "www"
+    type: "A"
+    value: "75.21.1.1"
+    zone: "voltgrid.com"
+  - name: "billing"
+    type: "A"
+    value: "75.21.1.1"
+    zone: "voltgrid.com"
+
+  # --- voltgrid.com mail (bare-domain apex + traditional mail.* + MX) ---
+  # Point both the apex and mail.voltgrid.com at 52.96.223.2 -- that's the
+  # ONLY IP the prebuilt email container image binds Dovecot / Postfix to
+  # (verified via `ss -lntp` inside the container 2026-07-02). Dovecot uses
+  # SNI + Ansible-managed `local_name voltgrid.com {...}` blocks in 10-ssl.conf
+  # to present the voltgrid.com cert when clients connect with SNI voltgrid.com.
+  # Same IP handles both mail domains cleanly -- standard multi-domain server
+  # pattern. 200.200.200.2 (is-inet primary) is kept out of the mail path
+  # because nothing there is bound to :143/:993/:25/:465.
+  - name: ""                              # zone apex A record (bare-domain)
+    type: "A"
+    value: "52.96.223.2"
+    zone: "voltgrid.com"
+  - name: "mail"
+    type: "A"
+    value: "52.96.223.2"
+    zone: "voltgrid.com"
+  - type: "MX"
+    priority: 10
+    value: "mail.voltgrid.com"
+    zone: "voltgrid.com"
+
+  # --- Outlook.com (real MSFT IP that is-inet claims as a lo alias) ---
+  - name: ""                              # zone apex A record (bare-domain)
+    type: "A"
+    value: "52.96.223.2"
+    zone: "outlook.com"
+  - name: "mail"
+    type: "A"
+    value: "52.96.223.2"
+    zone: "outlook.com"
+  - type: "MX"
+    priority: 10
+    value: "mail.outlook.com"
+    zone: "outlook.com"

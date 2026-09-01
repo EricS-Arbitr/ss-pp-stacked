@@ -1,0 +1,516 @@
+# ============================================================
+# PowerPlant Ansible Inventory
+# ============================================================
+
+# ------------------------------------------------------------
+# Corporate IT Workstations
+# ------------------------------------------------------------
+[business_processing]
+pp-bp-wkstn-1
+pp-bp-wkstn-2
+pp-bp-wkstn-3
+pp-bp-wkstn-4
+pp-bp-wkstn-5
+pp-bp-wkstn-6
+pp-bp-wkstn-7
+pp-bp-wkstn-8
+
+[engineering]
+pp-eng-wkstn-1
+pp-eng-wkstn-2
+pp-eng-wkstn-3
+pp-eng-wkstn-4
+pp-eng-wkstn-5
+pp-eng-wkstn-6
+pp-eng-wkstn-7
+pp-eng-wkstn-8
+
+[legal_staff]
+pp-ls-wkstn-1
+pp-ls-wkstn-2
+pp-ls-wkstn-3
+pp-ls-wkstn-4
+pp-ls-wkstn-5
+pp-ls-wkstn-6
+
+[infosec]
+pp-is-wkstn-1
+pp-is-wkstn-2
+pp-is-wkstn-3
+pp-is-wkstn-4
+
+# OT control workstations — live on the new 192.168.100.0/24 OT subnet,
+# domain-joined, use pp-dc03 (192.168.100.5) as primary DNS.
+[ot_control]
+pp-ctl-wks-01
+pp-ctl-wks-02
+pp-ctl-wks-03
+pp-ctl-wks-04
+
+# The SIMULATED BUSINESS's user endpoints -- NOT every Windows workstation.
+#
+# Renamed from [workstations] 2026-08-25. MEMBERSHIP IS UNCHANGED; only the
+# name moved. The old name claimed a population it did not have: the six
+# win-hunt-* analyst boxes are Windows 10 workstations and are deliberately
+# absent, so anything hung off the name silently skipped them -- the same
+# shape as the Sysmon gap (telemetry decided by AUE membership) and
+# pp-dcs-ctrl (no forwarder because [ot_servers] was never a child of
+# [splunk-forwarder]).
+#
+# The exclusion itself is correct and was already recorded: a scenario or
+# attack-simulation play targeting the simulated business must not sweep in
+# the blue team's own tooling. The bug was the name, not the contents.
+#
+# Identical membership to [aue] today, and that is expected -- these ARE the
+# hosts that run emulated users. [aue] is the posture axis, this the org axis.
+[sim_workstations:children]
+business_processing
+engineering
+legal_staff
+infosec
+ot_control
+
+# ------------------------------------------------------------
+# Corporate Servers
+# ------------------------------------------------------------
+[domain_controllers]
+pp-dc01
+pp-dc02
+pp-dc03
+
+[pdc]
+pp-dc01
+
+[additional_dc]
+pp-dc02
+pp-dc03
+
+[corporate_servers]
+pp-file
+pp-mail
+pp-sql
+pp-syslog
+
+# OT-side servers — on the 192.168.100.0/24 OT subnet behind pp-ot-router.
+# Domain-joined; auth/DNS goes to pp-dc03 (local OT DC) with pp-dc01 fallback.
+#
+# pp-dcs-ctrl (OT control station) FORWARDS Windows event logs but runs NO
+# Sysmon, and both halves are asserted -- section 13 and section 12
+# respectively. The line is INSTRUMENT vs OBSERVE: Sysmon instruments the OS
+# with a kernel driver and process-level hooks, which does not belong on
+# process-critical OT equipment; a universal forwarder only reads event logs
+# Windows is already writing, which is ordinary practice on an HMI or
+# engineering station even where an EDR agent would never be allowed.
+#
+# Until 2026-08-24 it produced NO telemetry at all -- no event logs, no Sysmon,
+# nothing -- while it sat in [ae], a host attacks are actively run against. A
+# target with zero evidence is not blind-spot realism, it is an exercise that
+# cannot be scored. It reached that state structurally rather than by decision:
+# this group was not a child of [splunk-forwarder], so nobody ever chose to
+# exclude it. It is a child now.
+[ot_servers]
+pp-dcs-ctrl
+
+[file]
+pp-file
+
+[global_dns]
+is-inet
+
+
+[email]
+is-inet
+
+# Windows hosts that join the voltgrid.com domain
+[members]
+# SOC hunt/analyst workstations. Added to [members] 2026-08-17 so analysts
+# sign in with domain credentials rather than a local account -- win-hunt-1
+# had never been joined. [members] is what the `Join Domain` play targets.
+pp-bp-wkstn-1
+pp-bp-wkstn-2
+pp-bp-wkstn-3
+pp-bp-wkstn-4
+pp-bp-wkstn-5
+pp-bp-wkstn-6
+pp-bp-wkstn-7
+pp-bp-wkstn-8
+pp-eng-wkstn-1
+pp-eng-wkstn-2
+pp-eng-wkstn-3
+pp-eng-wkstn-4
+pp-eng-wkstn-5
+pp-eng-wkstn-6
+pp-eng-wkstn-7
+pp-eng-wkstn-8
+pp-ls-wkstn-1
+pp-ls-wkstn-2
+pp-ls-wkstn-3
+pp-ls-wkstn-4
+pp-ls-wkstn-5
+pp-ls-wkstn-6
+pp-is-wkstn-1
+pp-is-wkstn-2
+pp-is-wkstn-3
+pp-is-wkstn-4
+pp-file
+pp-mail
+# OT-side domain members (blueprint 145). Per host_vars comments each of
+# these is a "Domain-joined member of voltgrid.com" whose primary DNS is
+# pp-dc03 (the OT-side additional DC at 192.168.100.5) with pp-dc01 as
+# the cross-ESP fallback. Missing from [members] was the reason
+# --tags domain_member_retry never fired against them post-blueprint-145.
+pp-dcs-ctrl
+pp-ctl-wks-01
+pp-ctl-wks-02
+pp-ctl-wks-03
+pp-ctl-wks-04
+pp-sql
+win-hunt-1
+win-hunt-2
+win-hunt-3
+win-hunt-4
+win-hunt-5
+win-hunt-6
+
+# is-inet is added as a direct member (NOT via :children) so it inherits
+# `DomainUsers` from group_vars/voltgrid.yml -- the `email` role loops
+# that list to provision mailboxes at mail.voltgrid.com. Matches how
+# range-development-ansible puts is-inet directly in [site] for the same
+# reason. is-inet still stays out of [windows]/[linux] baseline groups
+# (per CLAUDE.md), so common role doesn't run against it. The other
+# voltgrid.yml vars (domain_name, proxy_server, etc.) are harmless on
+# is-inet -- no play targeting is-inet consumes them.
+[voltgrid]
+is-inet
+
+[voltgrid:children]
+sim_workstations
+domain_controllers
+corporate_servers
+ot_servers
+# voltgrid.yml carries domain_name, which both the domain join and
+# autologin's DefaultDomainName need. The hunt boxes reach it through here
+# now, instead of being listed directly in [voltgrid] to work around not
+# belonging to any child group.
+hunt
+
+
+# ------------------------------------------------------------
+# DMZ
+# ------------------------------------------------------------
+[dmz]
+pp-www
+pp-dmz-dns
+pp-dmz-smtp
+
+[wordpress-pv]
+pp-www
+
+# ------------------------------------------------------------
+# All servers (corporate + OT)
+# ------------------------------------------------------------
+[servers:children]
+domain_controllers
+corporate_servers
+ot_servers
+
+# ------------------------------------------------------------
+# Windows OS groups
+# ------------------------------------------------------------
+[win10]
+pp-bp-wkstn-1
+pp-bp-wkstn-2
+pp-bp-wkstn-3
+pp-bp-wkstn-4
+pp-bp-wkstn-5
+pp-bp-wkstn-6
+pp-bp-wkstn-7
+pp-bp-wkstn-8
+pp-ls-wkstn-1
+pp-ls-wkstn-2
+pp-ls-wkstn-3
+pp-ls-wkstn-4
+pp-ls-wkstn-5
+pp-ls-wkstn-6
+pp-is-wkstn-1
+pp-ctl-wks-01
+pp-ctl-wks-02
+pp-ctl-wks-03
+pp-ctl-wks-04
+win-hunt-1
+win-hunt-2
+win-hunt-3
+win-hunt-4
+win-hunt-5
+win-hunt-6
+
+[win11]
+pp-eng-wkstn-1
+pp-eng-wkstn-2
+pp-eng-wkstn-3
+pp-eng-wkstn-4
+pp-eng-wkstn-5
+pp-eng-wkstn-6
+pp-eng-wkstn-7
+pp-eng-wkstn-8
+pp-is-wkstn-2
+pp-is-wkstn-3
+pp-is-wkstn-4
+
+[winserver2022]
+pp-dc01
+pp-dc02
+pp-file
+pp-sql
+pp-dcs-ctrl
+
+[winserver2019]
+pp-dmz-dns
+pp-mail
+pp-dmz-smtp
+pp-dc03
+
+[windows:children]
+win10
+win11
+winserver2022
+winserver2019
+
+# ------------------------------------------------------------
+# Linux OS groups
+# ------------------------------------------------------------
+[ubuntu22]
+pp-syslog
+pp-www
+pp-proxy
+pp-splunk
+pp-splunk-idx01
+pp-splunk-idx02
+pp-splunk-cm
+
+[linux:children]
+ubuntu22
+
+
+# The single-instance group. Still drives the CURRENT working deployment
+# (roles splunk, splunk-es, splunk-verify-user). Retired only once the cluster
+# below demonstrably receives data -- see docs/splunk/ build sheet section 8.
+[splunk]
+pp-splunk
+
+# ------------------------------------------------------------
+# Distributed Splunk tiers (blueprint ARBITR_PP_147.yml)
+# ------------------------------------------------------------
+# Deliberately NOT in [splunk-forwarder]. That group's children are servers,
+# dmz, sim_workstations and hunt, and none of these hosts belong to any of them
+# -- an indexer running a UF pointed at the indexer tier forwards to itself.
+# More load-bearing than it was: [servers] became a child on 2026-08-25, so a
+# Splunk tier host added to any server group WOULD pick up a forwarder.
+[splunk_search_head]
+pp-splunk
+
+[splunk_indexer]
+pp-splunk-idx01
+pp-splunk-idx02
+
+[splunk_cluster_manager]
+pp-splunk-cm
+
+
+# Central syslog collector — receives from all Linux/VyOS/pfSense hosts,
+# then Splunk UF on this box ships /var/log/remote/* to pp-splunk.
+[syslog]
+pp-syslog
+
+
+[splunk-forwarder]
+# The only member belonging to no server/workstation group.
+pp-proxy
+
+[splunk-forwarder:children]
+# `servers` rather than domain_controllers + corporate_servers: it also
+# carries [ot_servers], which is how pp-dcs-ctrl gets a forwarder. It sat
+# dark for months precisely because ot_servers was NOT a child here --
+# nobody chose to exclude it, the structure just never included it.
+# Stating "all servers forward" positively means a future server group
+# inherits telemetry instead of quietly missing it. pp-dcs-ctrl keeps its
+# Sysmon exclusion (section 12): INSTRUMENT vs OBSERVE.
+servers
+dmz
+sim_workstations
+# The analyst boxes, via [hunt] rather than six direct lines. They are NOT
+# in sim_workstations by design -- see the comment there.
+hunt
+
+# Domain-joined Windows hosts that deliberately do NOT forward to Splunk.
+#
+# Empty by design. verify_deployment.sh section 13 asserts that every host in
+# [windows] is either in [splunk-forwarder] or listed here, so a host with no
+# telemetry is always a decision someone wrote down rather than an omission
+# nobody noticed.
+#
+# This exists because the old check could not catch that class of gap: it
+# counted forwarders AGAINST the forwarder group, so a host that should have
+# been in the group and was not could never be reported missing. pp-dcs-ctrl
+# sat dark that way and only surfaced from a host count of 44 against 45.
+[splunk_forwarder_exempt]
+
+
+
+# ------------------------------------------------------------
+# Endpoint telemetry. Sysmon used to be applied ONLY as a side effect of
+# [aue] membership -- it sat inside that play's role list -- so "does this
+# host produce process/network/DNS telemetry" was decided by "does this host
+# run emulated users". Unrelated concerns, and the result was measurable:
+# on 2026-08-18 pp-file, pp-sql, pp-mail and all six hunt workstations had
+# no Sysmon at all, including the file and database servers that are the
+# highest-value targets in any scenario the range runs.
+#
+# This group is now the single source of truth for Sysmon coverage.
+#
+# pp-dcs-ctrl is DELIBERATELY EXCLUDED (Eric, 2026-08-18) -- it is OT process
+# equipment, not an engineering workstation that monitors OT. Do not add it
+# without asking; the same line is drawn in so_agent_endpoint_subnets.
+#
+# The DCs are included even though their image already ships Sysmon running:
+# unmanaged means their config can silently drift from the rest of the estate,
+# which for a SIEM is exactly the kind of gap nobody notices until an
+# investigation comes up empty.
+[sysmon:children]
+aue
+hunt
+
+[sysmon]
+pp-file
+pp-sql
+pp-mail
+pp-dc01
+pp-dc02
+pp-dc03
+
+# SOC hunt/analyst workstations. An attacker who lands on an analyst box sees
+# everything the SOC sees and can steer the investigation, so these are
+# high-value targets and belong in the SIEM like any other endpoint -- they
+# reach [splunk-forwarder] and [sysmon] as a child of each.
+#
+# They are NOT in [sim_workstations]: a scenario or attack-simulation play
+# targeting the simulated business must not sweep in the blue team's own
+# tooling. Nor do they get emulated users -- and note that exclusion is not
+# enforceable from here, see verify_deployment.sh section 11.
+[hunt]
+win-hunt-1
+win-hunt-2
+win-hunt-3
+win-hunt-4
+win-hunt-5
+win-hunt-6
+
+# ------------------------------------------------------------
+# VyOS routers and firewalls (replaces old Firewall/Router primitives)
+# ------------------------------------------------------------
+[vyos]
+pp-isp-router
+pp-internal-router
+# pp-ot-router excluded — it's a SimSpace RC_NG_OT_Router appliance, not VyOS;
+# the vyos role's `set interface ...` commands are rejected. Self-configures
+# from its image; managed (if at all) via a future role, not this one.
+site-edge-router
+pp-corp-router
+# pp-ot-firewall, pp-internal-firewall, pp-external-firewall moved to
+# [pfsense] (image swap; all three firewalls now pfSense, static routing only)
+
+# ------------------------------------------------------------
+# pfSense firewalls
+# ------------------------------------------------------------
+[pfsense]
+pp-ot-firewall
+pp-internal-firewall
+pp-external-firewall
+
+# ------------------------------------------------------------
+# VyOS-CLI-compatible boxes that the customer's full `vyos` role
+# can't manage (e.g., interface commands fail on the appliance) but
+# that still accept raw `vyos_config` calls for routing. Targeted by
+# the "Additional VyOS static routes" play, NOT the full vyos role.
+# ------------------------------------------------------------
+[vyos_routes_only]
+pp-ot-router
+
+
+[proxy]
+pp-proxy
+
+# ------------------------------------------------------------
+# Unmanaged systems — hard-coded, NOT targeted by any Ansible play.
+# Contains specialized pre-built appliances (OT PLCs/HMIs + the elgg
+# social-platform vuln host) that self-configure from their images.
+# ------------------------------------------------------------
+[unmanaged]
+pp-gas-sim
+pp-gasplant-plc
+pp-gasvibsens
+pp-ot-hist
+pp-engws
+elgg
+
+# ------------------------------------------------------------
+# Range infrastructure — present in the range, NOT managed by Ansible.
+# ------------------------------------------------------------
+# The Ansible controller itself, the red-team box and the AUE actuator VM.
+# Like [unmanaged] this group is targeted by no play; it exists so these
+# hosts are recorded rather than invisible, and so `--limit` can reach them.
+#
+# Kept deliberately during the 2026-08-25 inventory audit. It was on the
+# delete list as unreferenced, and deleting it removed Red-1,
+# Activity-Emulation and ansible from the inventory ENTIRELY -- they belong
+# to no other group. An unreferenced group and an unreferenced host are not
+# the same thing, and only the host count caught the difference.
+#
+# Activity-Emulation drives user emulation. Which hosts it targets is
+# platform-side config, not inventory -- see verify_deployment.sh section 11.
+[infrastructure]
+ansible
+is-inet
+Red-1
+Activity-Emulation
+
+[aue]
+pp-bp-wkstn-1
+pp-bp-wkstn-2
+pp-bp-wkstn-3
+pp-bp-wkstn-4
+pp-bp-wkstn-5
+pp-bp-wkstn-6
+pp-bp-wkstn-7
+pp-bp-wkstn-8
+pp-eng-wkstn-1
+pp-eng-wkstn-2
+pp-eng-wkstn-3
+pp-eng-wkstn-4
+pp-eng-wkstn-5
+pp-eng-wkstn-6
+pp-eng-wkstn-7
+pp-eng-wkstn-8
+pp-ls-wkstn-1
+pp-ls-wkstn-2
+pp-ls-wkstn-3
+pp-ls-wkstn-4
+pp-ls-wkstn-5
+pp-ls-wkstn-6
+pp-is-wkstn-1
+pp-is-wkstn-2
+pp-is-wkstn-3
+pp-is-wkstn-4
+pp-ctl-wks-01
+pp-ctl-wks-02
+pp-ctl-wks-03
+pp-ctl-wks-04
+
+[ae]
+pp-dc01
+pp-dc02
+pp-dc03
+pp-file
+pp-sql
+pp-mail
+pp-dcs-ctrl

@@ -1,0 +1,53 @@
+ansible_host: "10.255.240.201"
+
+# SimSpace provisions: eth0 = first data-plane (shared with mgmt 10.255.240.201/20)
+# NOTE: image is global/RC_NG_OT_Router (not RC-VyOS-Router). Treated here as
+# vyos-managed per user direction; verify the vyos role actually applies if
+# BGP sessions don't come up.
+network_interfaces:
+  - name: "eth0"                      # switch-8 transit to pp-ot-firewall (mgmt shares)
+    ipv4:
+      address: "192.168.200.202"
+      netmask: "255.255.255.252"
+      type: "ethernet"
+      ospf: true
+  - name: "eth1"                      # Gas-Turbine gateway
+    ipv4:
+      address: "192.168.95.1"
+      netmask: "255.255.255.0"
+      type: "ethernet"
+      ospf: true
+  - name: "eth2"                      # Gas-Turbine-Sim gateway (/27)
+    ipv4:
+      address: "192.168.90.1"
+      netmask: "255.255.255.224"
+      type: "ethernet"
+      ospf: true
+  - name: "eth3"                      # PP-OT-Services gateway (/27)
+    ipv4:
+      address: "192.168.90.97"
+      netmask: "255.255.255.224"
+      type: "ethernet"
+      ospf: true
+  - name: "eth4"                      # 192.168.100.0/24 OT subnet — pp-dc03,
+    ipv4:                             # pp-dcs-ctrl, pp-ctl-wks-01..04 live here.
+      address: "192.168.100.1"        # Documentation only — pp-ot-router is in
+      netmask: "255.255.255.0"        # [vyos_routes_only], the vyos role does
+      type: "ethernet"                # not run on it; SimSpace platform configures
+      ospf: true                      # the interface from the layout YAML directly.
+
+# pp-ot-firewall was migrated from VyOS to pfSense (static routing only),
+# so the BGP peering through it is gone. Replaced with a static default
+# route inward through the new firewall.
+#
+# IMPORTANT: pp-ot-router is in [vyos_routes_only] (not [vyos]) because the
+# customer's full vyos role's interface tasks fail on the RC_NG_OT_Router
+# appliance. So we use extra_static_routes (handled by the "Additional VyOS
+# static routes" play) rather than the role's single `static_route` field
+# (which only runs for hosts the full role targets).
+extra_static_routes:
+  - network: "0.0.0.0/0"
+    next_hop: "192.168.200.201"       # pp-ot-firewall (pfSense)
+    descr: "Default inward via pp-ot-firewall"
+
+bgp: []

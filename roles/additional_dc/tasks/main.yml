@@ -1,0 +1,211 @@
+---
+- name: Install RSAT ADDS
+  ansible.windows.win_feature:
+    name: "rsat-ADDS"
+    state: present
+
+- name: Install RSAT DNS
+  ansible.windows.win_feature:
+    name: "rsat-DNS-Server"
+    state: present
+
+- name: local admin guest customization fix - Server 2019
+  ansible.windows.win_shell: "net user administrator /passwordreq:yes"
+
+- name: local admin guest customization fix - Server 2022
+  ansible.windows.win_user:
+    name: administrator
+    password: "{{ domain_admin_password }}"
+    password_never_expires: yes
+    account_disabled: no
+
+# =========================================================================
+# The rescue below is NOT self-reversing, so undo it first.
+# =========================================================================
+# When promotion fails, the rescue sets the DNS service to stopped + DISABLED.
+# That is correct for containment, but nothing put it back -- so every
+# SUBSEQUENT run attempted promotion with `install_dns: true` against a
+# disabled service. PowerPlant 2026-08-25: three deploy attempts, 4h 31m, and
+# attempts 2 and 3 were sabotaged by attempt 1's own cleanup.
+#
+# Left stopped, not started: promotion starts it once there is a zone to serve.
+# Starting a zone-less DNS server here would re-create exactly the SERVFAIL
+# the rescue exists to prevent.
+- name: Undo a previous rescue — DNS may be disabled from a failed run
+  ansible.windows.win_service:
+    name: DNS
+    start_mode: auto
+    state: stopped
+  failed_when: false
+
+# =========================================================================
+# Preflight — can this host actually reach a DC before we try to promote?
+# =========================================================================
+# PowerPlant 2026-08-25: pp-dc03 held a POISONED ARP entry for its default
+# gateway. It had 192.168.100.1 at 00-50-56-98-7D-D7 while pp-ot-router's eth4
+# is 00-50-56-A8-30-DC. The impostor answered ICMP, so the gateway "pinged"
+# and every diagnostic that stopped at ping looked healthy -- but nothing
+# routed, and pp-ot-router showed pp-dc03's own entry going STALE because it
+# never received a packet. Its three same-subnet neighbours all held the
+# correct MAC and worked fine.
+#
+# The module's error for this is "An Active Directory domain controller for
+# the domain could not be contacted. Ensure that you supplied the correct DNS
+# domain name" -- which points at DNS naming and is actively misleading. It
+# then burned three retries, disabled DNS, and failed the run. Three times.
+#
+# So: prove reachability BEFORE promoting, and name what failed. The probe
+# targets the host's OWN configured DNS server, because in this topology that
+# server IS the DC promotion must reach -- no extra variable to drift.
+#
+# VALIDATED IN BOTH DIRECTIONS, which is the rule this repo keeps re-learning.
+# Measured on pp-dc03 2026-08-25: TCP 389 to 172.16.2.7 returned False while
+# the ARP entry was poisoned and True immediately after the entry was flushed,
+# with nothing else changed. This predicate is capable of returning both.
+- name: Preflight — prove a domain controller is reachable, recovering if not
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'SilentlyContinue'
+    function Probe {
+      $dns = (Get-DnsClientServerAddress -AddressFamily IPv4 |
+              Where-Object { $_.ServerAddresses.Count -gt 0 } |
+              Select-Object -First 1).ServerAddresses[0]
+      if (-not $dns) { return @($false, 'no-dns-server-configured') }
+      $t = Test-NetConnection -ComputerName $dns -Port 389 -WarningAction SilentlyContinue
+      if (-not $t.TcpTestSucceeded) { return @($false, "ldap389-unreachable-to-$dns") }
+      $srv = Resolve-DnsName -Name "_ldap._tcp.dc._msdcs.{{ domain_name }}" -Type SRV -Server $dns
+      if (-not $srv) { return @($false, "srv-lookup-failed-via-$dns") }
+      return @($true, "ok-via-$dns")
+    }
+    $r = Probe
+    if ($r[0]) { Write-Output ("ADDC_PREFLIGHT_OK " + $r[1]); exit 0 }
+    # Known range behaviour: a poisoned gateway ARP entry. Flush and re-probe
+    # ONCE. Self-healing rather than a manual step, because a deployment that
+    # needs a human to run Remove-NetNeighbor is not hands-off -- and the
+    # promotion reboot can re-poison it after this role has already passed.
+    $gw = (Get-NetRoute -DestinationPrefix '0.0.0.0/0' |
+           Sort-Object RouteMetric | Select-Object -First 1).NextHop
+    if ($gw -and $gw -ne '0.0.0.0') {
+      Remove-NetNeighbor -IPAddress $gw -Confirm:$false
+      Start-Sleep -Seconds 5
+      Test-Connection -ComputerName $gw -Count 2 -Quiet | Out-Null
+      $r2 = Probe
+      if ($r2[0]) { Write-Output ("ADDC_PREFLIGHT_RECOVERED arp-flushed-gw-$gw " + $r2[1]); exit 0 }
+      Write-Output ("ADDC_PREFLIGHT_FAIL after-arp-flush-gw-$gw " + $r2[1]); exit 0
+    }
+    Write-Output ("ADDC_PREFLIGHT_FAIL no-default-gateway " + $r[1]); exit 0
+  register: addc_preflight
+  changed_when: "'ADDC_PREFLIGHT_RECOVERED' in addc_preflight.stdout"
+  retries: 6
+  delay: 20
+  until: "'ADDC_PREFLIGHT_FAIL' not in addc_preflight.stdout"
+  failed_when: false
+
+- name: Fail fast if no domain controller is reachable
+  ansible.builtin.fail:
+    msg: |
+      {{ inventory_hostname }} cannot reach a domain controller, so promotion
+      was NOT attempted.
+
+      Probe result: {{ addc_preflight.stdout | default('(no output)') | trim }}
+
+      This is a NETWORK problem, not an AD or credentials problem. The
+      promotion module would have reported "An Active Directory domain
+      controller for the domain could not be contacted -- ensure you supplied
+      the correct DNS domain name", which points at the wrong thing entirely.
+
+      Checks, in the order they run:
+        1. a DNS server is configured on this host
+        2. TCP 389 opens to that server
+        3. _ldap._tcp.dc._msdcs.{{ domain_name }} resolves via it
+
+      A gateway ARP flush has ALREADY been tried and did not help. Look at
+      routing and at whether anything else is answering for the gateway
+      address: compare `Get-NetNeighbor -IPAddress <gw>` on this host against
+      a working host on the same subnet. They must show the same MAC.
+  when: "'ADDC_PREFLIGHT_FAIL' in (addc_preflight.stdout | default(''))"
+
+# PROMOTION IS WRAPPED IN block/rescue, AND THE RESCUE IS THE POINT.
+#
+# When this fails partway, the DNS Server role is already installed and
+# running with no AD zone and no forwarders. It then answers every query with
+# SERVFAIL -- which is WORSE than the host being down. A down server times out
+# and the Windows resolver falls through to the next configured entry; a
+# SERVFAIL is a RESPONSE, so the resolver stops there and never tries the
+# secondary.
+#
+# PowerPlant 2026-08-16: pp-dc03's promotion failed on a replication race and
+# the zone-less DNS server it left behind took the OT segment's name
+# resolution with it. pp-ctl-wks-03 -- configured {192.168.100.5,
+# 172.16.2.7}, byte-identical to its three siblings that succeeded -- never
+# fell back to pp-dc01, could not resolve _ldap._tcp.dc._msdcs, and failed to
+# join. One failed promotion, three failed hosts. Measured on the range:
+#
+#   Resolve-DnsName _ldap._tcp.dc._msdcs.<domain> -Server 192.168.100.5
+#       -> RCODE_SERVER_FAILURE
+#   Resolve-DnsName _ldap._tcp.dc._msdcs.<domain> -Server 172.16.2.7
+#       -> answers, both DCs
+- name: Promote to additional domain controller
+  block:
+    - name: Promote to additional domain controller
+      microsoft.ad.domain_controller:
+        dns_domain_name: "{{ domain_name }}"
+        domain_admin_user: "{{ domain_admin }}@{{ domain_name }}"
+        domain_admin_password: "{{ domain_admin_password }}"
+        safe_mode_password: "{{ domain_admin_password }}"
+        install_dns: true
+        state: domain_controller
+        # REPLACES `notify: Reboot Windows`. The module's own documentation:
+        # "It is highly recommended to set reboot=true to have Ansible manage
+        # the host reboot phase as the actions done by this module puts the
+        # host in a state that cannot be handled by a subsequent task without
+        # a reboot."
+        #
+        # A handler structurally cannot do this. Promotion sets the domain
+        # hint, so by the time the handler runs the old credentials no longer
+        # authenticate, the reboot silently does not happen, and the host is
+        # left half-joined -- WinRM then answers "ntlm: the specified
+        # credentials were rejected by the server" and no retry can reach it.
+        # That is exactly how airfield's fops-dc01 failed on every deploy
+        # until the same pattern was removed from its dcpromo role.
+        reboot: true
+      register: additional_dc_task
+      # The underlying fault is a REPLICATION RACE: the domain join creates
+      # this computer's account on one DC, promotion immediately asks another
+      # -- across the ESP boundary in pp-dc03's case -- before it has
+      # replicated, and DCPromo exits 53, "a domain controller could not be
+      # contacted for the domain ... that contained an account for this
+      # computer". Transient by nature, so retry rather than build a gate
+      # around something that resolves itself in under a minute.
+      until: additional_dc_task is succeeded
+      retries: 3
+      delay: 60
+  rescue:
+    # DO NOT LEAVE A ZONE-LESS DNS SERVER ANSWERING. Stopping it turns
+    # SERVFAIL back into a timeout, which is what lets clients fall through to
+    # their secondary. This is the whole difference between "one DC did not
+    # promote" and "the segment lost DNS".
+    - name: Promotion failed — stop DNS so it cannot SERVFAIL for the segment
+      ansible.windows.win_service:
+        name: DNS
+        state: stopped
+        start_mode: disabled
+      failed_when: false
+
+    - name: Fail with the promotion error, after DNS has been made harmless
+      ansible.builtin.fail:
+        msg: |
+          {{ inventory_hostname }} failed to promote to an additional domain
+          controller after 3 attempts.
+
+          Module said: {{ additional_dc_task.msg | default('(no message registered)') }}
+
+          DNS on this host has been STOPPED and DISABLED, so its zone-less
+          server can no longer answer SERVFAIL to clients that list it first.
+          Those clients will now time out and fall through to their secondary
+          DNS, which keeps this failure confined to this host instead of
+          taking the segment's name resolution with it.
+
+          RECOVERY: fix the underlying cause and re-run. If this host is
+          half-joined and WinRM rejects credentials ("ntlm: the specified
+          credentials were rejected by the server"), Ansible cannot reach it
+          at all -- it needs a console-side demote/rejoin, or a rebuild.

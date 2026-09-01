@@ -1,0 +1,63 @@
+ansible_host: "10.255.240.189"
+
+# SimSpace provisions: eth0 = first data-plane (shared with mgmt 10.255.240.189/20)
+network_interfaces:
+  - name: "eth0"                      # switch-0 transit to pp-external-firewall (mgmt shares)
+    ipv4:
+      address: "75.21.1.2"
+      netmask: "255.255.255.252"
+      type: "ethernet"
+      ospf: true
+  - name: "eth1"                      # red-net (external/red-team sim)
+    ipv4:
+      address: "210.210.210.1"
+      netmask: "255.255.255.0"
+      type: "ethernet"
+      ospf: true
+  - name: "eth2"                      # PowerPlant-External-Placeholder (external sim)
+    ipv4:
+      address: "200.200.200.1"
+      netmask: "255.255.255.0"
+      type: "ethernet"
+      ospf: true
+
+static_route:
+  route: "0.0.0.0/0"
+  next_hop: "200.200.200.2"           # is-inet — owns all simulated public IP /32s on lo
+
+# pp-external-firewall (pfSense 2.8.1) runs FRR/BGP, so the eBGP session
+# is live. pp-external-firewall redistributes connected (75.21.1.0/30 and
+# 172.16.8.0/24 DMZ), so those are learned. But the deeper corp /24s
+# (172.16.2-6.0/24, 172.16.9.0/24) and OT (192.168.0.0/16) are NOT in
+# pp-external-firewall's BGP table because of iBGP no-readvertise on
+# pp-internal-router (see pp-internal-firewall.yml comment and
+# UPSTREAM_FIXES.md). They never propagate out to the eBGP edge.
+#
+# Back-stop with explicit umbrella statics here so return traffic from
+# is-inet (or from anything riding through pp-isp-router) makes it back
+# to corp. Will become unnecessary if/when route-reflector-client is
+# configured on pp-internal-router.
+extra_static_routes:
+  - network: "172.16.0.0/16"
+    next_hop: "75.21.1.1"             # pp-external-firewall (pfSense)
+    descr: "Corp umbrella via pp-external-firewall (iBGP no-readvertise back-stop)"
+  - network: "192.168.0.0/16"
+    next_hop: "75.21.1.1"             # pp-external-firewall (pfSense)
+    descr: "OT umbrella via pp-external-firewall"
+
+# SimSpace's VyOS image bakes a stale `0.0.0.0/0` for each of this host's
+# /24 interface IPs (eth1=210.210.210.1 red-net, eth2=200.200.200.1
+# ext-placeholder). Same self-loop pattern as pp-internal-router — strip so
+# only the real default (0.0.0.0/0 → 200.200.200.2 is-inet) remains.
+# See UPSTREAM_FIXES.md (2026-05-27 entry).
+extra_static_routes_remove:
+  - network: "0.0.0.0/0"
+    next_hop: "200.200.200.1"         # own eth2 IP (self-loop)
+  - network: "0.0.0.0/0"
+    next_hop: "210.210.210.1"         # own eth1 IP (self-loop)
+
+bgp:
+  - as: 65002
+    neighbor:
+      ip: "75.21.1.1"                 # pp-external-firewall (AS 65001 — eBGP)
+      as: 65001

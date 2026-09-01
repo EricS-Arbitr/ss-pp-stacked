@@ -1,0 +1,331 @@
+---
+# Overlay of the upstream splunk-es role.
+# Differences vs. base:
+#   1. Adds a second readiness probe that polls /services/admin/localapps —
+#      the exact endpoint essinstall calls. /services/server/info responds
+#      far earlier than localapps does on a freshly-installed Splunk, so
+#      essinstall would fire while Splunk was still bootstrapping ES.
+#   2. Wraps essinstall in a retry loop; even after localapps responds it
+#      can intermittently time out during heavy datamodel/summary loading.
+
+- name: Check Splunk Status
+  ansible.builtin.systemd:
+    name: splunk
+    enabled: true
+    state: started
+  register: splunk_status
+
+- name: Ensure Splunk Tmp Directory Exists
+  ansible.builtin.file:
+    path: "{{ staging_dir_linux }}/splunk"
+    state: directory
+    mode: '0755'
+  register: tmp_directory_check
+
+- name: Get Splunk Apps
+  ansible.builtin.find:
+    paths: "{{ ansible_installers }}/splunk/apps/"
+    patterns: "*.tg*"
+  delegate_to: localhost
+  register: splunk_apps
+
+# The installers share comes from the controller base image, not from this
+# repo, so this glob is the ONLY thing deciding which add-ons a range runs.
+# splunk_apps_exclude (roles/splunk-es/defaults/main.yml) filters it; see that
+# file for why TA-microsoft-sysmon must not be installed alongside
+# Splunk_TA_microsoft_sysmon.
+- name: Select Splunk apps to install, excluding conflicting add-ons
+  ansible.builtin.set_fact:
+    splunk_apps_selected: >-
+      {{ splunk_apps.files
+         | rejectattr('path', 'match', splunk_apps_exclude_re)
+         | list }}
+  vars:
+    # regex_escape so dots in filenames are literal, not wildcards.
+    splunk_apps_exclude_re: >-
+      ^.*/({{ splunk_apps_exclude | map('regex_escape') | join('|') }})$
+
+- name: Report which Splunk apps were excluded
+  ansible.builtin.debug:
+    msg: >-
+      Installing {{ splunk_apps_selected | length }} of
+      {{ splunk_apps.files | length }} app tarballs. Excluded:
+      {{ (splunk_apps.files | map(attribute='path') | map('basename') | list)
+         | difference(splunk_apps_selected | map(attribute='path') | map('basename') | list)
+         | join(', ') | default('none', true) }}
+
+# A tarball named in splunk_apps_exclude that is not present in the share is a
+# silent no-op, and the next person would never know the filter had stopped
+# matching. Fail loudly instead -- the filenames encode versions and WILL drift.
+- name: Every excluded tarball must actually exist in the installers share
+  ansible.builtin.assert:
+    that:
+      - item in (splunk_apps.files | map(attribute='path') | map('basename') | list)
+    fail_msg: >-
+      splunk_apps_exclude names '{{ item }}' but no such tarball exists in
+      {{ ansible_installers }}/splunk/apps/. The share has been updated and the
+      exclusion no longer matches -- re-check which Sysmon add-ons are present
+      before deploying, or the conflicting one will be installed again.
+  loop: "{{ splunk_apps_exclude }}"
+
+- name: Copy Splunk Apps to Staging Directory
+  ansible.builtin.copy:
+    src: "{{ item.path }}"
+    dest: "{{ staging_dir_linux }}/splunk/apps/"
+    mode: '0644'
+  with_items: "{{ splunk_apps_selected }}"
+  when: splunk_apps_selected | length > 0
+
+- name: Install Splunk Apps
+  ansible.builtin.shell: >
+    /opt/splunk/bin/splunk install app {{ staging_dir_linux }}/splunk/apps/{{ item.path | basename }}
+    -auth {{ splunk_admin }}:{{ splunk_admin_password }} -update true
+  with_items: "{{ splunk_apps_selected }}"
+  register: install_apps_result
+  retries: 6
+  delay: 20
+  until: install_apps_result.rc == 0
+  changed_when: install_apps_result.rc == 0
+
+# Excluding the tarball only helps a FRESH range. A range deployed before this
+# fix already has the conflicting app on disk, and re-running the play would
+# otherwise leave it there.
+- name: Read the app list Splunk actually has installed
+  ansible.builtin.shell: >
+    set -o pipefail && /opt/splunk/bin/splunk display app
+    -auth {{ splunk_admin }}:{{ splunk_admin_password }} | awk '{print $1}'
+  args:
+    executable: /bin/bash
+  register: installed_apps
+  changed_when: false
+
+- name: Remove conflicting Splunk apps left over from an earlier deploy
+  ansible.builtin.shell: >
+    /opt/splunk/bin/splunk remove app {{ item }}
+    -auth {{ splunk_admin }}:{{ splunk_admin_password }}
+  loop: "{{ splunk_apps_forbidden }}"
+  when: item in installed_apps.stdout_lines
+  register: remove_conflicting
+  changed_when: remove_conflicting.rc == 0
+  notify: Restart Splunk Service
+
+- name: Re-read the app list after any removal
+  ansible.builtin.shell: >
+    set -o pipefail && /opt/splunk/bin/splunk display app
+    -auth {{ splunk_admin }}:{{ splunk_admin_password }} | awk '{print $1}'
+  args:
+    executable: /bin/bash
+  register: installed_apps_after
+  changed_when: false
+
+# Assert the OUTCOME -- that the app set is right -- not that the install
+# command ran. "splunk install app returned 0" was true throughout the period
+# when two Sysmon add-ons were fighting over the same CIM fields.
+- name: Assert no conflicting Splunk app is installed
+  ansible.builtin.assert:
+    that:
+      - splunk_apps_forbidden | intersect(installed_apps_after.stdout_lines) | length == 0
+    fail_msg: >-
+      Conflicting Splunk app(s) still installed:
+      {{ splunk_apps_forbidden | intersect(installed_apps_after.stdout_lines) | join(', ') }}.
+      These duplicate the CIM mappings in Splunk_TA_microsoft_sysmon and will
+      null out fields for the event codes their case() statements do not cover.
+    success_msg: "App set verified: no conflicting Sysmon add-ons installed."
+
+- name: Copy Enterprise Security App
+  ansible.builtin.copy:
+    src: "{{ ansible_installers }}/splunk/splunk-es.spl"
+    dest: "{{ staging_dir_linux }}/splunk/"
+    mode: '0644'
+  register: copy_es_result
+
+- name: Install Enterprise Security App
+  ansible.builtin.shell: >
+    /opt/splunk/bin/splunk install app {{ staging_dir_linux }}/splunk/splunk-es.spl
+    -auth {{ splunk_admin }}:{{ splunk_admin_password }} -update true
+  register: install_es_result
+  retries: 6
+  delay: 30
+  until: install_es_result.rc == 0
+  changed_when: false
+  notify: Restart Splunk Service
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for Splunk REST API to be fully ready
+  ansible.builtin.uri:
+    url: "https://127.0.0.1:8089/services/server/info"
+    method: GET
+    user: "{{ splunk_admin }}"
+    password: "{{ splunk_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: 200
+  register: splunk_api_check
+  retries: 20
+  delay: 15
+  until: splunk_api_check.status == 200
+
+# Splunk's REST server caps threads at httpServer.maxThreads (default 8 on a
+# 4-vCPU box from the base server.conf.j2). The splunk_secure_gateway modular
+# input alone hammers this limit during ES bootstrap, leaving no slots for
+# essinstall — which then gets HTTP 503 with an HTML body and dies with
+# JSONDecodeError. Disable SSG (unused in a closed range) and raise the cap
+# before running essinstall.
+- name: Pre-disable Splunk apps that interfere with ES bootstrap
+  # splunk_secure_gateway: not used in a closed range; modular input hogs REST threads
+  # missioncontrol: essinstall tries to disable it; its endpoint hangs and times out essinstall
+  ansible.builtin.shell: >
+    /opt/splunk/bin/splunk disable app {{ item }}
+    -auth {{ splunk_admin }}:{{ splunk_admin_password }}
+  loop:
+    - splunk_secure_gateway
+    - missioncontrol
+  register: disable_apps_result
+  changed_when: "'disabled' in (disable_apps_result.stdout | default('')) and 'already' not in (disable_apps_result.stdout | default(''))"
+  failed_when: false
+  notify: Restart Splunk Service
+
+- name: Raise [httpServer] maxThreads in server.conf for ES bootstrap
+  community.general.ini_file:
+    path: /opt/splunk/etc/system/local/server.conf
+    section: httpServer
+    option: maxThreads
+    value: "64"
+    mode: '0644'
+  register: maxthreads_conf
+  notify: Restart Splunk Service
+
+- name: Flush handlers to apply SSG-disable + maxThreads change
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for Splunk REST API again after second restart
+  ansible.builtin.uri:
+    url: "https://127.0.0.1:8089/services/server/info"
+    method: GET
+    user: "{{ splunk_admin }}"
+    password: "{{ splunk_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: 200
+  register: splunk_api_check_2
+  retries: 20
+  delay: 15
+  until: splunk_api_check_2.status == 200
+
+# Pre-warm: essinstall calls /services/admin/localapps, which is heavy on a
+# freshly-installed Splunk. Poll it directly with long retries so we don't
+# fire essinstall before that endpoint is willing to answer.
+- name: Wait for Splunk localapps endpoint to be responsive
+  ansible.builtin.uri:
+    url: "https://127.0.0.1:8089/services/admin/localapps?count=0"
+    method: GET
+    user: "{{ splunk_admin }}"
+    password: "{{ splunk_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    timeout: 120
+    status_code: 200
+  register: splunk_localapps_check
+  retries: 30
+  delay: 30
+  until: splunk_localapps_check.status == 200
+
+- name: Configure Enterprise Security App
+  ansible.builtin.shell: >
+    set -o pipefail && /opt/splunk/bin/splunk search '| essinstall --ssl_enablement ignore'
+    -auth {{ splunk_admin }}:{{ splunk_admin_password }}
+  args:
+    executable: /bin/bash
+  register: configure_es_result
+  changed_when: false
+  retries: 3
+  delay: 120
+  until: configure_es_result.rc == 0
+  notify: Restart Splunk Service
+
+- name: Check Content Update Directory
+  ansible.builtin.file:
+    path: "/opt/splunk/etc/apps/DA-ESS-ContentUpdate/local/"
+    state: directory
+    mode: '0755'
+
+- name: Check Endpoint Protection Directory
+  ansible.builtin.file:
+    path: "/opt/splunk/etc/apps/SA-EndpointProtection/local/"
+    state: directory
+    mode: '0755'
+
+- name: Check CIM Directory
+  ansible.builtin.file:
+    path: "/opt/splunk/etc/apps/Splunk_SA_CIM/local/"
+    state: directory
+    mode: '0755'
+
+- name: Check ES Directory
+  ansible.builtin.file:
+    path: "/opt/splunk/etc/apps/SplunkEnterpriseSecuritySuite/local/"
+    state: directory
+    mode: '0755'
+
+- name: Copy Content Update Saved Searches
+  ansible.builtin.copy:
+    src: "/etc/ansible/templates/splunkapps/cu-savedsearches.conf.j2"
+    dest: "/opt/splunk/etc/apps/DA-ESS-ContentUpdate/local/savedsearches.conf"
+    mode: '0644'
+  notify: Restart Splunk Service
+
+- name: Copy Endpoint Protection Saved Searches
+  ansible.builtin.copy:
+    src: "/etc/ansible/templates/splunkapps/ep-savedsearches.conf.j2"
+    dest: "/opt/splunk/etc/apps/SA-EndpointProtection/local/savedsearches.conf"
+    mode: '0644'
+  notify: Restart Splunk Service
+
+- name: Copy CIM Macros
+  ansible.builtin.copy:
+    src: "/etc/ansible/templates/splunkapps/cim-macros.conf.j2"
+    dest: "/opt/splunk/etc/apps/Splunk_SA_CIM/local/macros.conf"
+    mode: '0644'
+  notify: Restart Splunk Service
+
+- name: Copy CIM Datamodels
+  ansible.builtin.copy:
+    src: "/etc/ansible/templates/splunkapps/cim-datamodels.conf.j2"
+    dest: "/opt/splunk/etc/apps/Splunk_SA_CIM/local/datamodels.conf"
+    mode: '0644'
+  notify: Restart Splunk Service
+
+- name: Copy ES Saved Searches
+  ansible.builtin.copy:
+    src: "/etc/ansible/templates/splunkapps/es-savedsearches.conf.j2"
+    dest: "/opt/splunk/etc/apps/SplunkEnterpriseSecuritySuite/local/savedsearches.conf"
+    mode: '0644'
+  notify: Restart Splunk Service
+
+- name: Copy Forwarding Script
+  ansible.builtin.copy:
+    src: "/etc/ansible/templates/splunkapps/stack_op_forwarder.py.j2"
+    dest: "/opt/splunk/bin/scripts/stack_op_forwarder.py"
+    mode: '0755'
+  notify: Restart Splunk Service
+
+- name: Make Directory
+  ansible.builtin.file:
+    path: "/opt/splunk/etc/users/admin/search/local"
+    state: directory
+    mode: '0755'
+  notify: Restart Splunk Service
+
+- name: Copy Alert Action
+  ansible.builtin.copy:
+    src: "/etc/ansible/templates/splunkapps/alert-savedsearches.conf.j2"
+    dest: "/opt/splunk/etc/users/admin/search/local/savedsearches.conf"
+    mode: '0644'
+  notify: Restart Splunk Service
+
+- name: Cleanup Staging Directory
+  ansible.builtin.file:
+    path: "{{ staging_dir_linux }}/splunk/apps/"
+    state: absent
