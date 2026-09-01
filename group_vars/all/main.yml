@@ -257,3 +257,17 @@ global_dns_records:
     priority: 10
     value: "mail.outlook.com"
     zone: "outlook.com"
+
+# =========================================================================
+# Security Onion credentials
+# =========================================================================
+# PLAINTEXT, matching this repo's existing convention -- domain_admin_password
+# and splunk_admin_password above are plaintext too. ss-pp-so vaults these; a
+# half-vaulted repo is worse than either choice made consistently, and it would
+# add a /home/simspace/.vault_pass dependency this range does not otherwise
+# have.
+#
+# The variable names keep their `vault_` prefix so the ported SO roles work
+# unmodified -- the prefix now signals "credential", not "encrypted".
+vault_so_web_password: "Simspace1!Simspace1!"     # SOC web login
+vault_so_remote_password: "Simspace1!Simspace1!"  # SOREMOTEPASS — grid join

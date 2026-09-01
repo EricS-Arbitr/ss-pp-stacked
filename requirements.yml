@@ -5,3 +5,14 @@
 collections:
   - name: pfsensible.core
     version: ">=0.7.1"
+
+  # --- Security Onion, added with the SO port 2026-09-01 ---
+  # VyOS: gretap tunnel + tc mirror config on the mirror routers
+  - name: vyos.vyos
+    version: ">=4.0.0"
+  # network_cli transport for vyos.vyos, and the ipaddr filter
+  - name: ansible.netcommon
+    version: ">=5.0.0"
+  # sysctl / mount on the SO nodes
+  - name: ansible.posix
+    version: ">=1.5.0"

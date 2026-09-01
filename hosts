@@ -514,3 +514,58 @@ pp-file
 pp-sql
 pp-mail
 pp-dcs-ctrl
+
+# ------------------------------------------------------------
+# Security Onion 2.4 — distributed grid on the pp-security subnet
+# ------------------------------------------------------------
+# Added with the SO port 2026-09-01. Deploy order is enforced by site.yml:
+# the manager must be fully up before search and sensor nodes run, because
+# they join the grid during their own so-setup.
+[ansible_controller]
+ansible ansible_connection=local
+
+[so_manager]
+so-manager
+
+[so_search]
+so-search
+
+[so_sensor]
+so-sensor-corp
+so-sensor-ot
+so-sensor-edge
+
+[so_all:children]
+so_manager
+so_search
+so_sensor
+
+# Routers that mirror traffic into the sensors' gretap tunnels. One sensor per
+# router: corp <- pp-corp-router, ot <- pp-ot-router, edge <- pp-isp-router.
+[so_mirror_routers]
+pp-corp-router
+pp-ot-router
+pp-isp-router
+
+
+# ------------------------------------------------------------
+# Forensics / malware analysis bench — pp-security subnet
+# ------------------------------------------------------------
+# Label group; no play targets it. Recorded so these hosts are visible in
+# inventory rather than existing only in the blueprint.
+#
+# TELEMETRY: instrument what ANALYSES, not what DETONATES. pp-sift is an
+# evidence host and a candidate for an agent; pp-remnux and pp-flare exist to
+# execute malware, and agent telemetry from a detonation box is
+# indistinguishable from an intrusion -- it would put instructor activity into
+# the same SIEMs students are hunting in.
+[forensics]
+pp-sift
+pp-remnux
+pp-flare
+
+# pp-remnux and pp-flare are additionally unmanaged, which is what keeps them
+# out of the endpoint enrolment pattern in playbooks/75-endpoint.yml.
+[unmanaged]
+pp-remnux
+pp-flare

@@ -34,7 +34,7 @@
 #
 # If the fleet grows, re-measure rather than incrementing: a play target one
 # host above FORKS strands a single host running alone at the end of it.
-PLAYBOOK="arbitr_pp_playbook.yaml"
+PLAYBOOK="site.yml"
 RETRY_FILE="retry/$PLAYBOOK.retry"
 MAX_ATTEMPTS=3
 FORKS=52

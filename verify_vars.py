@@ -97,8 +97,12 @@ def collect_defined(stage):
     defined = set(MAGIC)
 
     # Top-level keys in dedicated var files only.
-    var_files = list((stage / "group_vars").glob("*.yml"))
-    var_files += list((stage / "host_vars").glob("*.yml"))
+    # rglob, not glob: group_vars/all/ is a DIRECTORY as of the Security
+    # Onion port (main.yml + security_onion.yml). A non-recursive glob missed
+    # every variable in it and reported them all as undefined -- including the
+    # ones this file exists to catch.
+    var_files = list((stage / "group_vars").rglob("*.yml"))
+    var_files += list((stage / "host_vars").rglob("*.yml"))
     for role in (stage / "roles").glob("*"):
         for sub in ("defaults", "vars"):
             f = role / sub / "main.yml"

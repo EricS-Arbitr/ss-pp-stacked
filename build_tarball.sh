@@ -192,6 +192,13 @@ fi
 # Other deployment files
 cp -R "$SS_PP_AB/host_vars"               "$STAGE/"
 cp -R "$SS_PP_AB/group_vars"              "$STAGE/"
+
+# Security Onion additions (2026-09-01). site.yml orchestrates the range
+# playbook plus the SO phases; playbooks/ holds those phases; rules/ carries
+# the ETOPEN ruleset so_apt_mirror serves from the controller's mirror.
+cp    "$SS_PP_AB/site.yml"                "$STAGE/"
+cp -R "$SS_PP_AB/playbooks"               "$STAGE/"
+cp -R "$SS_PP_AB/rules"                   "$STAGE/"
 cp    "$SS_PP_AB/hosts"                   "$STAGE/"
 cp    "$SS_PP_AB/arbitr_pp_playbook.yaml" "$STAGE/"
 cp    "$SS_PP_AB/deploy.sh"               "$STAGE/"
@@ -224,7 +231,7 @@ fi
 # --- Pack ------------------------------------------------------------------
 
 cd "$STAGE"
-TAR_PATHS=(roles host_vars group_vars hosts arbitr_pp_playbook.yaml deploy.sh)
+TAR_PATHS=(roles host_vars group_vars hosts arbitr_pp_playbook.yaml site.yml playbooks rules deploy.sh)
 [ -f "verify_deployment.sh" ] && TAR_PATHS+=(verify_deployment.sh)
 [ -f "requirements.yml" ] && TAR_PATHS+=(requirements.yml)
 [ -d "files" ] && TAR_PATHS+=(files)

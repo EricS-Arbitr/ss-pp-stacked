@@ -1,0 +1,37 @@
+---
+# =========================================================================
+# site.yml — full stacked deploy: PowerPlant range, Splunk, Security Onion
+# =========================================================================
+# Order matters and each stage depends on the one before.
+#
+#   arbitr_pp_playbook  the range itself — network, AD, endpoints, and the
+#                       distributed Splunk cluster. Unchanged from ss-pp-ab.
+#   05-time             NTP-less clock sync; SO's certificates fail on skew
+#   10-mirror           controller-hosted mirror of the SO install artifacts
+#   20-vyos             gretap tunnels + tc mirrors on the three routers
+#   30-prereqs          so_base on every SO node
+#   40-manager          so-setup on the manager — 20-30 minutes
+#   50-nodes            search node and sensors join the grid
+#   60-verify           end-to-end checks
+#
+# 75-endpoint (Elastic Agent enrolment) is deliberately NOT imported. The
+# endpoints already carry a Splunk universal forwarder from the range
+# playbook; adding the Elastic agent is a separate decision, run explicitly:
+#
+#   ansible-playbook -i hosts playbooks/75-endpoint.yml
+#
+# SEQUENCING NOTE: Security Onion runs AFTER the range playbook, not
+# interleaved. The SO nodes need routing, DNS and the mirror path live before
+# so-setup runs, and the mirror sources are the same VyOS routers the range
+# playbook configures.
+# =========================================================================
+
+- import_playbook: arbitr_pp_playbook.yaml
+
+- import_playbook: playbooks/05-time.yml
+- import_playbook: playbooks/10-mirror.yml
+- import_playbook: playbooks/20-vyos.yml
+- import_playbook: playbooks/30-prereqs.yml
+- import_playbook: playbooks/40-manager.yml
+- import_playbook: playbooks/50-nodes.yml
+- import_playbook: playbooks/60-verify.yml
