@@ -287,6 +287,27 @@ pp-splunk
 pp-splunk-idx01
 pp-splunk-idx02
 pp-splunk-cm
+# Security Onion nodes — same RDP_Ubuntu_Desktop_22.04.5 image as the seven
+# above, so they inherit group_vars/linux.yml credentials (simspace/simspace1,
+# the SHORT form this image uses) and the `common` baseline unchanged.
+#
+# THIS MEMBERSHIP IS WHAT MAKES THEM REACHABLE AT ALL. [so_manager],
+# [so_search], [so_sensor] and [so_all] give these hosts ROLES to run but no
+# CONNECTION SETTINGS: ansible_connection, ansible_user and ansible_ssh_pass
+# all live in group_vars/linux.yml, which is keyed on [linux] <- [ubuntu22].
+# Omit this block and every SO play reports ok=0 unreachable=1, which looks
+# indistinguishable from a VM that was never built.
+#
+# ss-pp-stacked 2026-09-02 lost three deploy attempts to exactly that. The SO
+# host_vars had also been carrying ss-pp-so's management IPs, so correcting
+# those looked like the fix -- it was a real defect, but a SECOND one, and the
+# symptom did not move. Two independent causes, one symptom: fixing the first
+# one found is not the same as fixing the one that produced the failure.
+so-manager
+so-search
+so-sensor-corp
+so-sensor-ot
+so-sensor-edge
 
 [linux:children]
 ubuntu22

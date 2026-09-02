@@ -10,20 +10,26 @@
 # --forks 52 (up from Ansible default 5) so full sweeps parallelize across the
 # PowerPlant fleet without splitting any play into batches.
 #
-# 52 SPECIFICALLY, raised from 40 on 2026-08-20. Forks below the largest play
-# target silently serialise its tail: with 40, the 45-host [windows] plays ran
-# in two waves, which cost an extra init_wait_delay (15s) on the second and
-# staggered every Windows sweep for no reason.
+# 57 SPECIFICALLY. Forks below the largest play target silently serialise its
+# tail: at 40, the 45-host [windows] plays ran in two waves, which cost an
+# extra init_wait_delay (15s) on the second and staggered every Windows sweep
+# for no reason. Raised 40 -> 52 on 2026-08-20, and 52 -> 57 on 2026-09-02
+# when the five Security Onion nodes joined [ubuntu22] and therefore [linux].
 #
-# 52 is the largest group any play targets. Measured, not guessed:
+# 57 is the largest group any play targets. Counted from the inventory with
+# :children expanded, not guessed:
 #
-#     52  hosts: windows,linux      <- the `common` role, the heaviest sweep
-#     47  hosts: splunk-forwarder
+#     57  hosts: windows,linux      <- the `common` role, the heaviest sweep
+#     48  hosts: splunk-forwarder
 #     45  hosts: windows
 #     42  hosts: sysmon
 #     40  hosts: members
+#     12  hosts: linux
+#      5  hosts: so_all
 #
-# 45 would have covered [windows] and still split the other two.
+# 45 would have covered [windows] and still split the other two. This is the
+# re-measure the note below asks for -- adding hosts to a group that a play
+# targets changes this number, so recount rather than assuming it still fits.
 #
 # TRADEOFF: each fork is a separate Python process, so this is a memory
 # question rather than a CPU one -- the workers are almost always blocked on
@@ -37,7 +43,7 @@
 PLAYBOOK="site.yml"
 RETRY_FILE="retry/$PLAYBOOK.retry"
 MAX_ATTEMPTS=3
-FORKS=52
+FORKS=57
 
 # --- Speed knobs -------------------------------------------------------------
 # Trims 5-10 minutes off a full-fleet run vs Ansible defaults.
