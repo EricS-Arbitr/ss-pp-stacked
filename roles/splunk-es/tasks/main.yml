@@ -296,6 +296,43 @@
     src: so_sourcetypes_props.conf.j2
     dest: "/opt/splunk/etc/apps/arbitr_so_sourcetypes/local/props.conf"
     mode: '0644'
+  register: so_props
+
+# An app declaration and, more importantly, metadata. Without default.meta the
+# field aliases are scoped to this app alone and no ordinary search resolves
+# them -- while btool cheerfully reports them as merged. See the header of
+# so_sourcetypes_default.meta.j2 for how that presents.
+- name: Create the Security Onion app default and metadata directories
+  ansible.builtin.file:
+    path: "/opt/splunk/etc/apps/arbitr_so_sourcetypes/{{ item }}/"
+    state: directory
+    mode: '0755'
+  loop: [default, metadata]
+
+- name: Declare the Security Onion sourcetypes app
+  ansible.builtin.template:
+    src: so_sourcetypes_app.conf.j2
+    dest: "/opt/splunk/etc/apps/arbitr_so_sourcetypes/default/app.conf"
+    mode: '0644'
+  register: so_appconf
+
+- name: Export the Security Onion knowledge objects globally
+  ansible.builtin.template:
+    src: so_sourcetypes_default.meta.j2
+    dest: "/opt/splunk/etc/apps/arbitr_so_sourcetypes/metadata/default.meta"
+    mode: '0644'
+  register: so_meta
+
+# Metadata is read at startup, unlike search-time props which are read per
+# search. A new app plus new metadata therefore DOES need a restart, where the
+# Sysmon props override did not -- that one landed inside an existing app whose
+# metadata already exported globally. Gated on change so a no-op run never
+# bounces the search head.
+- name: Restart Splunk so the new app and its metadata are picked up
+  ansible.builtin.systemd:
+    name: splunk
+    state: restarted
+  when: so_appconf is changed or so_meta is changed
 
 - name: Check Sysmon add-on local directory
   ansible.builtin.file:
