@@ -362,6 +362,15 @@ sim_workstations
 # The analyst boxes, via [hunt] rather than six direct lines. They are NOT
 # in sim_workstations by design -- see the comment there.
 hunt
+# Security Onion sensors, for Zeek/Suricata/Strelka only. They are already in
+# [linux] via [ubuntu22], which is what gives them credentials and the base
+# forwarder install; this entry is what turns telemetry on. Their inputs
+# template deliberately skips the host-log stanzas -- see
+# roles/splunk-forwarder/templates/lin_inputs.conf.j2.
+#
+# so_manager and so_search are ABSENT ON PURPOSE. Strelka runs on the sensors
+# in distributed SO 2.4, so those two hosts carry nothing worth forwarding.
+so_sensor
 
 # Domain-joined Windows hosts that deliberately do NOT forward to Splunk.
 #

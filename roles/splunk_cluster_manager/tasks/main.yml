@@ -137,14 +137,31 @@
     mode: '0644'
   register: cm_indexes
 
+# INDEX-TIME parsing for the Security Onion sourcetypes. Rides the same bundle
+# as indexes.conf because both are peer-side: timestamp recognition and line
+# breaking happen on the indexers as events arrive. The search-time half
+# (KV_MODE, field aliases) is a separate file on the SEARCH HEAD -- see
+# roles/splunk-es/templates/so_sourcetypes_props.conf.j2.
+- name: Template the Security Onion sourcetype parsing into the app
+  ansible.builtin.template:
+    src: props.conf.j2
+    dest: "{{ splunk_cm_apps_dir }}/{{ splunk_cm_indexes_app }}/local/props.conf"
+    mode: '0644'
+  register: cm_props
+
 # Only on change: a bundle push restarts peers when the bundle is not
 # reload-compatible, so pushing every run would bounce the indexing tier on
 # every deploy.
+#
+# BOTH templates gate this. When props.conf was added the condition still read
+# `cm_indexes is changed` alone, which would have written the parsing config and
+# then never shipped it -- the peers would keep the old bundle and every SO
+# event would land unparsed, with the file on disk looking perfectly correct.
 - name: Push the cluster bundle to the peers
   ansible.builtin.command: >-
     /opt/splunk/bin/splunk apply cluster-bundle --answer-yes
     -auth {{ splunk_admin }}:{{ splunk_admin_password }}
-  when: cm_indexes is changed
+  when: cm_indexes is changed or cm_props is changed
   register: cm_bundle
   changed_when: true
 

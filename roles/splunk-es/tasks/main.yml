@@ -278,6 +278,25 @@
 # Search-time props are read per search from the knowledge bundle; restarting
 # the search head to apply this would be a pointless outage. Verified on the
 # range -- splunkd had been up 11 hours when the change took effect.
+# --- Security Onion sourcetypes (search-time) ----------------------------
+# Its own app rather than a vendor app's local/, because nothing upstream owns
+# these sourcetypes -- no Zeek or Suricata add-on exists on this range and none
+# can be fetched with zero egress. Keeping them separate means a future TA can
+# be dropped in without unpicking our overrides.
+#
+# No restart: search-time props are read per search from the knowledge bundle.
+- name: Create the Security Onion sourcetypes app
+  ansible.builtin.file:
+    path: "/opt/splunk/etc/apps/arbitr_so_sourcetypes/local/"
+    state: directory
+    mode: '0755'
+
+- name: Install Security Onion sourcetype parsing and CIM aliases
+  ansible.builtin.template:
+    src: so_sourcetypes_props.conf.j2
+    dest: "/opt/splunk/etc/apps/arbitr_so_sourcetypes/local/props.conf"
+    mode: '0644'
+
 - name: Check Sysmon add-on local directory
   ansible.builtin.file:
     path: "/opt/splunk/etc/apps/Splunk_TA_microsoft_sysmon/local/"

@@ -59,7 +59,8 @@
 # on the pre-rename sourcetype and never fire. Those checks failing now is
 # CORRECT: they are reporting a real normalisation defect rather than a broken
 # query. check_visibility will pass, which is how you tell the two apart.
-# Usage: verify_data.sh {visibility|indexes|whatsee|apps|dns_src|proc_cim|dm_src|dns_server|all}
+# Usage: verify_data.sh {visibility|indexes|whatsee|apps|dns_src|proc_cim|dm_src|dns_server|
+#                       so_zeek|so_suricata|so_strelka|so_hostlogs|all}
 
 set -u
 
@@ -256,8 +257,61 @@ check_dns_server() {
        | fields r'
 }
 
+# --- Security Onion: is each source actually landing in its own index? ----
+# Phase 5 forwards Zeek, Suricata and Strelka from the three sensors into three
+# separate indexes. These assert the OUTCOME -- events present, with counts --
+# rather than that a forwarder process is running. A UF can be up, connected
+# and configured and still deliver nothing, which is what every earlier version
+# of the Sysmon checks in this file managed to miss.
+check_so_zeek() {
+  run 'search index=zeek
+       | stats count AS e
+       | eval r=if(e>{{ splunk_verify_event_floor }},
+                   "ZEEK_OK_" . e . "_events",
+                   "ZEEK_LOW_" . e . "_events_below_floor_{{ splunk_verify_event_floor }}")
+       | fields r'
+}
+
+check_so_suricata() {
+  run 'search index=suricata
+       | stats count AS e
+       | eval r=if(e>0, "SURICATA_OK_" . e . "_events", "SURICATA_NO_EVENTS")
+       | fields r'
+}
+
+# INFORMATIONAL, NEVER FAILS. Strelka analyses files Zeek carves out of
+# traffic. With no user emulation and ~40% mirror packet loss no file is ever
+# complete, so zero is the EXPECTED reading and failing on it would be a
+# standing complaint about a known-open condition -- the same mistake the
+# capture_loss gate made on 2026-09-04. The count is printed so the number is
+# on screen the day it stops being zero.
+check_so_strelka() {
+  run 'search index=strelka
+       | stats count AS e
+       | eval r="STRELKA_" . e . "_events_informational"
+       | fields r'
+}
+
+# THE NEGATIVE REQUIREMENT, asserted rather than assumed.
+# "I do not want any other data or telemetry from these systems sent to
+# splunk." The sensor inputs template skips the /var/log/syslog and auth.log
+# stanzas every other Linux host gets, and this is what proves the skip works.
+# A template conditional that silently stops matching is invisible otherwise --
+# the host would just start shipping its OS logs and nothing would say so.
+check_so_no_host_logs() {
+  run 'search index=linux host=so-sensor-*
+       | stats count AS e
+       | eval r=if(e==0, "SO_HOSTLOGS_CLEAN",
+                   "SO_HOSTLOGS_LEAK_" . e . "_events")
+       | fields r'
+}
+
 case "${1:-all}" in
   visibility) check_visibility ;;
+  so_zeek)      check_so_zeek ;;
+  so_suricata)  check_so_suricata ;;
+  so_strelka)   check_so_strelka ;;
+  so_hostlogs)  check_so_no_host_logs ;;
   indexes)    check_indexes ;;
   whatsee)    check_whatsee ;;
   apps)       check_apps ;;
@@ -265,6 +319,7 @@ case "${1:-all}" in
   proc_cim)   check_proc_cim ;;
   dm_src)     check_dm_src ;;
   dns_server) check_dns_server ;;
-  all)        check_visibility; check_apps; check_dns_src; check_proc_cim; check_dm_src; check_dns_server ;;
+  all)        check_visibility; check_apps; check_dns_src; check_proc_cim; check_dm_src; check_dns_server; \
+              check_so_zeek; check_so_suricata; check_so_strelka; check_so_no_host_logs ;;
   *)          echo "usage: $0 {visibility|indexes|whatsee|apps|dns_src|proc_cim|dm_src|dns_server|all}"; exit 2 ;;
 esac

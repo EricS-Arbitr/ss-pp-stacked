@@ -826,7 +826,7 @@ else
   # separate, and a floor cannot separate them. Asking admin the same question
   # through the same interface can.
   admin_events=$(A pp-splunk -m ansible.builtin.shell -a \
-    "printf 'user = \"$SPLUNK_AUTH\"\n' | curl -sS -k -K - --url https://127.0.0.1:8089/services/search/jobs/export --data-urlencode 'search=search index=* source=\"XmlWinEventLog:Microsoft-Windows-Sysmon/Operational\" | stats count AS e | fields e' --data-urlencode earliest_time=-7d --data-urlencode latest_time=now --data-urlencode output_mode=csv 2>/dev/null | tail -1 | tr -dc '0-9'" \
+    "printf 'user = \"$SPLUNK_AUTH\"\n' | curl -sS -k -K - --url https://127.0.0.1:8089/services/search/jobs/export --data-urlencode 'search=search index=* source=\"WinEventLog:Microsoft-Windows-Sysmon/Operational\" | stats count AS e | fields e' --data-urlencode earliest_time=-7d --data-urlencode latest_time=now --data-urlencode output_mode=csv 2>/dev/null | tail -1 | tr -dc '0-9'" \
     --one-line | grep -oE 'stdout\) *[0-9]+' | grep -oE '[0-9]+' | head -1)
   admin_events=${admin_events:-0}
 
@@ -872,6 +872,41 @@ else
     "$VERIFY_DATA dm_src" \
     'DM_SRC_OK' \
     "pp-splunk: Network_Resolution acceleration contains src (else rebuild acceleration)"
+
+  # --- Security Onion -> Splunk (Phase 5) --------------------------------
+  # Three sensors forward Zeek, Suricata and Strelka into three indexes. These
+  # assert events ARRIVED, with counts, not that a forwarder is running. The
+  # distinction is not academic: a UF can be up, connected and correctly
+  # configured and still deliver nothing, which is exactly what a
+  # `service running` check would have called a pass.
+  check_pf_shell_token pp-splunk \
+    "$VERIFY_DATA so_zeek" \
+    'ZEEK_OK' \
+    "pp-splunk: Zeek events reaching the zeek index from the SO sensors"
+
+  check_pf_shell_token pp-splunk \
+    "$VERIFY_DATA so_suricata" \
+    'SURICATA_OK' \
+    "pp-splunk: Suricata EVE reaching the suricata index from the SO sensors"
+
+  # Reported, never failed. Strelka analyses files Zeek carves from traffic;
+  # with no user emulation and ~40% mirror packet loss, no file completes, so
+  # zero is EXPECTED. Gating on it would be a standing complaint about a
+  # known-open condition. The count is on screen for the day it changes.
+  check_pf_shell_token pp-splunk \
+    "$VERIFY_DATA so_strelka" \
+    'STRELKA_' \
+    "pp-splunk: Strelka index event count (informational — zero is expected)"
+
+  # The NEGATIVE requirement: the sensors must forward network telemetry and
+  # nothing else. Their inputs template skips the host-log stanzas every other
+  # Linux host gets, and this proves the skip still works. A template
+  # conditional that quietly stops matching is otherwise invisible -- the
+  # sensors would simply start shipping their OS logs.
+  check_pf_shell_token pp-splunk \
+    "$VERIFY_DATA so_hostlogs" \
+    'SO_HOSTLOGS_CLEAN' \
+    "pp-splunk: no sensor host logs leaked into the linux index"
 
 fi
 

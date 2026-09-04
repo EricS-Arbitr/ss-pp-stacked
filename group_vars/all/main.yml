@@ -62,6 +62,16 @@ splunk_cluster_indexes:
   - netfw
   - proxy
   - mail
+  # --- Security Onion, one index per source so an analyst can scope a search
+  # to a single sensor technology. Measured volumes on the live range:
+  # zeek ~1 GB/day raw on the busiest sensor (conn 20 MB/hr, dns 10, http 7),
+  # suricata ~12 MB/day, strelka effectively zero until file extraction works.
+  # No per-index size caps are set, so Splunk's 500 GB default applies -- ample
+  # headroom for three sensors without pinning a number that would need
+  # revisiting as the range grows.
+  - zeek
+  - suricata
+  - strelka
 
 # Scoped, search-only account used by verify_deployment.sh section 10 so the
 # verifier never needs the admin credential. Role definition and capability
