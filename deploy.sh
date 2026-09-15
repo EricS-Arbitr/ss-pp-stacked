@@ -41,7 +41,13 @@
 # If the fleet grows, re-measure rather than incrementing: a play target one
 # host above FORKS strands a single host running alone at the end of it.
 PLAYBOOK="site.yml"
-RETRY_FILE="retry/$PLAYBOOK.retry"
+# Ansible names the retry file after the playbook with the EXTENSION STRIPPED
+# (site.yml -> site.retry), so this has to strip it too. Built as
+# "$PLAYBOOK.retry" it yields site.yml.retry, which never exists -- and the
+# `[ -f "$RETRY_FILE" ]` guard below then reads that as "no retry file was
+# produced" and silently falls through to a full sweep. Attempt 2 had never
+# once been retry-scoped. Caught on airfield 2026-09-15.
+RETRY_FILE="retry/$(basename "${PLAYBOOK%.*}").retry"
 MAX_ATTEMPTS=3
 # FORKS is DERIVED, not chosen: it is the largest single play target plus a
 # small margin. Recomputed 2026-09-08.
