@@ -57,14 +57,18 @@ from `pp-corp-router`, `pp-isp-router` and `pp-ot-router`.
 | `40-manager` | waits for the registry artifacts, then installs the manager |
 | `50-nodes` | search + sensors join the grid |
 | `60-verify` | grid health |
+| `75-endpoint` | Sysmon, then Elastic Agent enrolment into SO's Fleet |
 
-`playbooks/75-endpoint.yml` exists but is **deliberately not imported**. These
-endpoints already carry a Splunk universal forwarder; adding the Elastic Agent
-on top is a separate decision, so it is run explicitly:
+**Both SIEMs receive endpoint data.** Every endpoint outside `[unmanaged]` and
+`[so_all]` carries a Splunk universal forwarder and an Elastic Agent, so the
+same process, file, registry and Windows event telemetry is workable in either
+tool. That includes the Splunk cluster hosts themselves, with a path-scoped
+Elastic Defend exclusion for `/opt/splunk/var` so their bucket churn does not
+swamp the dataset.
 
-```bash
-ansible-playbook -i hosts playbooks/75-endpoint.yml
-```
+Security Onion does not yet read the `pp-syslog` store — pfSense, VyOS, nginx
+and squid still reach Splunk only. `ss-pp-so`'s `so_fleet_integrations` role
+covers that if it is wanted here.
 
 ## Documentation
 

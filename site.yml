@@ -13,12 +13,30 @@
 #   40-manager          so-setup on the manager — 20-30 minutes
 #   50-nodes            search node and sensors join the grid
 #   60-verify           end-to-end checks
+#   75-endpoint         Sysmon, then Elastic Agent enrolment into SO's Fleet
 #
-# 75-endpoint (Elastic Agent enrolment) is deliberately NOT imported. The
-# endpoints already carry a Splunk universal forwarder from the range
-# playbook; adding the Elastic agent is a separate decision, run explicitly:
+# BOTH SIEMs ARE FED ENDPOINT DATA, AND THAT IS DELIBERATE.
 #
-#   ansible-playbook -i hosts playbooks/75-endpoint.yml
+# This range exists to work the same telemetry in either tool, so the endpoints
+# carry a Splunk universal forwarder (from 00-baseline) AND an Elastic Agent
+# (from 75-endpoint). The two read the same sources independently; neither
+# depends on the other and neither can starve the other.
+#
+# 75-endpoint was left unimported until 2026-09-18 on the reasoning that the
+# Splunk forwarder already covered these hosts. It does -- for Splunk. Security
+# Onion saw only Zeek and Suricata off the sensor mirrors, so process, file,
+# registry and Windows event data reached one SIEM and not the other.
+#
+# WHAT THIS PUTS AN AGENT ON. The enrolment play targets
+# `windows:linux:!unmanaged:!so_all`, which includes the four Splunk cluster
+# hosts. That is intended -- an indexer is exactly the kind of host worth
+# watching -- but it is why so_defend_exclusions carries a /opt/splunk/var
+# filter: without it, Splunk bucket and dispatch churn is ~96% of that host's
+# telemetry and dominates ES retention. The filter is path-scoped, not
+# host-scoped, so it covers all four.
+#
+# The SO grid itself is excluded (`!so_all`): SO runs its own agent on every
+# grid node, and a second one would double-ship and fight its log rotation.
 #
 # SEQUENCING NOTE: Security Onion runs AFTER the range playbook, not
 # interleaved. The SO nodes need routing, DNS and the mirror path live before
@@ -40,3 +58,8 @@
 - import_playbook: playbooks/40-manager.yml
 - import_playbook: playbooks/50-nodes.yml
 - import_playbook: playbooks/60-verify.yml
+
+# Endpoint telemetry into Security Onion. AFTER 60-verify: enrolment needs a
+# manager that is actually green, and Fleet has to be answering before an agent
+# can register with it.
+- import_playbook: playbooks/75-endpoint.yml

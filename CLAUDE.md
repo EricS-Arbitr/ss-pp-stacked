@@ -66,7 +66,7 @@ Custom roles beyond the base repo, grouped by what they build:
 | `so_manager` | answer file, registry seeding, `so-setup`, outcome verification |
 | `so_search` | search node install + grid join |
 | `so_sensor` | sensor install + grid join, GRE decap, Zeek/Suricata |
-| `elastic_agent` | Elastic Agent install + Fleet enrolment (only via 75-endpoint, see below) |
+| `elastic_agent` | Elastic Agent install + Fleet enrolment on every endpoint |
 | `vyos_mirror` | GRE tunnels + `tc` mirror rules feeding the sensors |
 | **Range** | |
 | `pfsense_firewall` | drives pfSense 2.8.1 via pfsensible.core plus `php -r` shims |
@@ -89,6 +89,7 @@ Custom roles beyond the base repo, grouped by what they build:
 - import_playbook: playbooks/40-manager.yml   # MUST complete before 50
 - import_playbook: playbooks/50-nodes.yml     # search + sensor grid-join
 - import_playbook: playbooks/60-verify.yml
+- import_playbook: playbooks/75-endpoint.yml  # Sysmon + Elastic Agent enrolment
 ```
 
 **10-mirror runs ahead of the range baseline.** It fails fast — the mirror is a
@@ -100,17 +101,25 @@ while it downloads. `40-manager` blocks on the artifacts.
 **Security Onion runs AFTER the range playbook, not interleaved.** The SO nodes
 need routing, DNS and the mirror path live before they can do anything.
 
-**`75-endpoint.yml` is deliberately NOT imported.** These endpoints already
-carry a Splunk universal forwarder from the baseline; putting the Elastic Agent
-on them as well is a separate decision, so it is explicit:
+**BOTH SIEMs are fed endpoint data, and that is the point of this range.** The
+endpoints carry a Splunk universal forwarder (from `00-baseline`) AND an
+Elastic Agent (from `75-endpoint`). The two read the same sources
+independently; neither depends on the other and neither can starve the other.
 
-```bash
-ansible-playbook -i hosts playbooks/75-endpoint.yml
-```
+`75-endpoint` runs after `60-verify` because enrolment needs a manager that is
+actually green — Fleet has to be answering before an agent can register.
 
-That is the one structural difference from `ss-pp-so`, where endpoint enrolment
-is part of every deploy. Anything you port between the two repos has to account
-for it.
+**What this puts an agent on.** The enrolment play targets
+`windows:linux:!unmanaged:!so_all`, which includes the four Splunk cluster
+hosts. That is intended — an indexer is exactly the kind of host worth watching
+— and it is why `so_defend_exclusions` carries a `/opt/splunk/var` filter.
+Without it, Splunk bucket and dispatch churn is ~96% of that host's telemetry
+and dominates ES retention. The filter is path-scoped rather than host-scoped,
+so it covers all four without naming them; the indexers carry the heaviest
+churn because they hold the buckets.
+
+The SO grid itself is excluded (`!so_all`) — SO runs its own agent on every
+grid node, and a second would double-ship and fight its log rotation.
 
 ### The retry model
 
@@ -323,7 +332,10 @@ vtysh -c "show ip route"  # pfSense
 
 5. **Both SIEMs are in scope here.** A change that only considers one of them
    is half a change — Splunk forwarders and Elastic Agents read the same files
-   on the same hosts, and the two can compete for a log source.
+   on the same hosts, and the two can compete for a log source. Security Onion
+   does NOT yet read the `pp-syslog` store: this repo has no
+   `so_fleet_integrations`, so pfSense, VyOS, nginx and squid still reach Splunk
+   only. `ss-pp-so` has that role if it is wanted here.
 
 ## Filesystem locations on a deployed controller
 
@@ -348,8 +360,11 @@ vtysh -c "show ip route"  # pfSense
   controller builds the registry artifacts with skopeo and serves them;
   `so_manager` stages them before `so-setup`, which is the supported airgap
   path. No in-play system needs internet access.
-- **Elastic Agent enrolment is opt-in**, not part of a deploy — the endpoints
-  already carry a Splunk universal forwarder.
+- **Both SIEMs receive endpoint telemetry.** Every endpoint outside `[unmanaged]`
+  and `[so_all]` carries a Splunk universal forwarder and an Elastic Agent, so
+  process, file, registry and Windows event data reaches both tools. The Splunk
+  cluster hosts are agent targets too, with a path-scoped Defend exclusion for
+  `/opt/splunk/var` so their own bucket churn does not swamp the dataset.
 - **Three pfSense firewalls** on the 2.8.1 image; routing is eBGP-at-edge,
   OSPF between the upstream pair, static everywhere else.
 - Syslog collects to pp-syslog's `/var/log/remote/` store from Linux, VyOS and

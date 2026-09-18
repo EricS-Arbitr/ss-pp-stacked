@@ -203,11 +203,17 @@ so_agent_installer_linux: "so-elastic-agent_linux_amd64"
 # events would trade away the detection this host most needs.
 so_defend_exclusions:
   - id: "99C1EB41-32BC-4FEC-BEA4-AC8A200EC305"
-    name: "Arbitr - Splunk variable data (pp-splunk)"
+    name: "Arbitr - Splunk variable data (cluster-wide)"
     description: >-
-      Splunk bucket and dispatch churn under /opt/splunk/var on pp-splunk:
-      ~11.1M file events/24h, 96% of that host's telemetry. No detection value
-      and it dominates ES retention. bin/ and etc/ remain monitored.
+      Splunk bucket and dispatch churn under /opt/splunk/var. Measured at
+      ~11.1M file events/24h on the search head, 96% of that host's telemetry.
+      No detection value and it dominates ES retention. bin/ and etc/ remain
+      monitored.
+
+      PATH-SCOPED, NOT HOST-SCOPED, which is what makes it correct for a
+      cluster: the filter keys on file.path, so it covers pp-splunk,
+      pp-splunk-cm and both indexer peers without naming them. The indexers
+      carry the heaviest churn of the four -- they hold the buckets.
     os_type: "linux"
     dataset: "endpoint.events.file"
     field: "file.path"
