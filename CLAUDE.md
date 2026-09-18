@@ -17,7 +17,7 @@ Security-Onion-only range; `ss-pp-ab` is the Splunk-only one.
 
 `range-development-ansible` ships base roles. `ss-pp-stacked` ships the range's
 inventory, host_vars, group_vars, custom roles, the baseline playbook
-(`arbitr_pp_playbook.yaml`) and the Security Onion phases (`playbooks/`).
+(`playbooks/00-baseline.yml`) and the Security Onion phases (`playbooks/`).
 `build_tarball.sh` bundles selected base roles plus the overlays into
 `ab_pp.tgz`, which extracts to `/etc/ansible` on the controller where
 `deploy.sh` runs `site.yml`.
@@ -29,7 +29,7 @@ ss-pp-stacked/
 ├── CLAUDE.md                    ← you are here
 ├── README.md                    ← what this repo is, build/deploy in brief
 ├── site.yml                     ← ★ the entry point
-├── arbitr_pp_playbook.yaml      ← the range baseline AND the whole Splunk build
+├── playbooks/00-baseline.yml      ← the range baseline AND the whole Splunk build
 ├── playbooks/                   ← 05-time 10-mirror 20-vyos 30-prereqs
 │                                  40-manager 50-nodes 60-verify 75-endpoint
 ├── hosts                        ← inventory
@@ -82,7 +82,7 @@ Custom roles beyond the base repo, grouped by what they build:
 
 ```yaml
 - import_playbook: playbooks/10-mirror.yml    # FIRST — see below
-- import_playbook: arbitr_pp_playbook.yaml    # baseline + the whole Splunk cluster
+- import_playbook: playbooks/00-baseline.yml    # baseline + the whole Splunk cluster
 - import_playbook: playbooks/05-time.yml      # Windows clock, DC-first
 - import_playbook: playbooks/20-vyos.yml      # GRE tunnels + tc mirror rules
 - import_playbook: playbooks/30-prereqs.yml   # so_base on all SO nodes
@@ -330,7 +330,7 @@ vtysh -c "show ip route"  # pfSense
 ```
 /etc/ansible/                          ← extracted tarball
 /etc/ansible/site.yml                   ← what deploy.sh runs
-/etc/ansible/arbitr_pp_playbook.yaml    ← baseline + Splunk
+/etc/ansible/playbooks/00-baseline.yml    ← baseline + Splunk
 /etc/ansible/playbooks/                 ← the Security Onion phases
 /etc/ansible/{host_vars,group_vars,roles}/
 ~/.ansible/ansible.log                  ← per-run log

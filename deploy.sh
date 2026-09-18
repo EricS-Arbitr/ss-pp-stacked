@@ -2,7 +2,7 @@
 #
 # deploy.sh — three-attempt Ansible runner with hybrid retry scope.
 #
-# Attempt 1: full arbitr_pp_playbook.yaml against every host
+# Attempt 1: full playbooks/00-baseline.yml against every host
 # Attempt 2: --limit @retry-file (failed hosts only) if a retry file exists
 # Attempt 3: full playbook again (safety net if retry-scoped attempt didn't cover
 #            a cross-host dependency)

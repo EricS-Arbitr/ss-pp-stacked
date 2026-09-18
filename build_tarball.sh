@@ -2,12 +2,12 @@
 #
 # Build ab_pp.tgz for deployment.
 #
-# Auto-discovers roles referenced by arbitr_pp_playbook.yaml (and their meta
+# Auto-discovers roles referenced by every playbook under playbooks/ (and their meta
 # dependencies), then bundles:
 #   1. base roles from ../range-development-ansible/roles/
 #   2. custom roles from ./roles/ (override base if same name)
 #   3. files/ (pre-staged installers — refreshed from Nexus when reachable)
-#   4. host_vars/, group_vars/, hosts, arbitr_pp_playbook.yaml, deploy.sh
+#   4. host_vars/, group_vars/, hosts, site.yml, playbooks/, deploy.sh
 #
 # Before staging, Nexus is checked for any installer in NEXUS_FETCH below.
 # If the remote is reachable and differs from the local copy, the local file
@@ -22,7 +22,7 @@ set -euo pipefail
 
 SS_PP_AB="$(cd "$(dirname "$0")" && pwd)"
 SRC_BASE="$(cd "$SS_PP_AB/../range-development-ansible" && pwd)"
-PLAYBOOK="$SS_PP_AB/arbitr_pp_playbook.yaml"
+PLAYBOOK="$SS_PP_AB/playbooks/00-baseline.yml"
 ARCHIVE="$SS_PP_AB/ab_pp.tgz"
 STAGE_PARENT="$(mktemp -d)"
 STAGE="$STAGE_PARENT/abpp_build"
@@ -237,7 +237,6 @@ cp    "$SS_PP_AB/site.yml"                "$STAGE/"
 cp -R "$SS_PP_AB/playbooks"               "$STAGE/"
 cp -R "$SS_PP_AB/rules"                   "$STAGE/"
 cp    "$SS_PP_AB/hosts"                   "$STAGE/"
-cp    "$SS_PP_AB/arbitr_pp_playbook.yaml" "$STAGE/"
 cp    "$SS_PP_AB/deploy.sh"               "$STAGE/"
 chmod +x "$STAGE/deploy.sh"
 # Read-only post-deploy verification script (optional but very useful).
@@ -314,7 +313,7 @@ fi
 # --- Pack ------------------------------------------------------------------
 
 cd "$STAGE"
-TAR_PATHS=(roles host_vars group_vars hosts arbitr_pp_playbook.yaml site.yml playbooks rules deploy.sh)
+TAR_PATHS=(roles host_vars group_vars hosts site.yml playbooks rules deploy.sh)
 [ -d "collections" ] && TAR_PATHS+=(collections)
 [ -f "verify_deployment.sh" ] && TAR_PATHS+=(verify_deployment.sh)
 [ -f "requirements.yml" ] && TAR_PATHS+=(requirements.yml)

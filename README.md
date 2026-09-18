@@ -50,7 +50,7 @@ from `pp-corp-router`, `pp-isp-router` and `pp-ot-router`.
 | Phase | Does |
 |---|---|
 | `10-mirror` | nginx on the controller serving the SO source, detection content and container registry artifacts |
-| `arbitr_pp_playbook.yaml` | the range baseline — network, AD, hosts, services, **and the whole Splunk cluster** |
+| `playbooks/00-baseline.yml` | the range baseline — network, AD, hosts, services, **and the whole Splunk cluster** |
 | `05-time` | Windows clock correction, DC-first |
 | `20-vyos` | GRE tunnels + `tc` mirror rules to the sensors |
 | `30-prereqs` | `so_base` on every grid node |
