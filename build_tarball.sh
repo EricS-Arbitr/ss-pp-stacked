@@ -322,6 +322,26 @@ if [ -x "$SS_PP_AB/verify_defend_filters.py" ] && command -v python3 >/dev/null 
   fi
 fi
 
+# HARD GATE. A task keyword indented one level too deep becomes a module
+# ARGUMENT instead: the keyword is never applied, so a `when` never gates, a
+# `loop` never loops, a `register` never registers.
+#
+# ss-pp-stacked 2026-09-20 nearly shipped a `when` indented under
+# ansible.builtin.fail. That would have fired the fail task on every host in
+# the play -- a targeted guard turned into a range-wide outage. The file was
+# valid YAML with no duplicate keys and balanced quotes, so neither of the
+# checks above could see it, and it reads correctly at a glance: both lines
+# spelled right, only the column wrong.
+if [ -x "$SS_PP_AB/verify_task_keywords.py" ] && command -v python3 >/dev/null 2>&1; then
+  echo ""
+  echo "=== Verifying task keywords are not module arguments ==="
+  if ! python3 "$SS_PP_AB/verify_task_keywords.py" "$STAGE"; then
+    echo ""
+    echo "ERROR: refusing to build a tarball with keywords that will not apply."
+    exit 1
+  fi
+fi
+
 if [ -x "$SS_PP_AB/verify_vars.py" ] && command -v python3 >/dev/null 2>&1; then
   echo ""
   echo "=== Verifying Jinja var references ==="

@@ -30,6 +30,16 @@
 # end-of-run coverage assertions remain the hard gate. Do not raise one
 # without checking the other.
 init_wait_timeout: 2400
+
+# How long a host may have NO ROUTE from the controller before init declares it
+# absent rather than slow. 20 x 15s = 5 minutes.
+#
+# This is the counterweight to the ceiling above. EHOSTUNREACH is not a boot in
+# progress -- it means ARP never resolved and there is nothing on the address.
+# pp-bp-wkstn-4 produced it identically in all three attempts of a 7h25m build
+# on 2026-09-20. Without this, raising the ceiling to 2400 would have made that
+# host cost 40 minutes per attempt instead of 15, on a run doomed either way.
+init_noroute_retries: 20
 init_wait_delay: 15
 init_wait_sleep: 10
 
