@@ -11,7 +11,25 @@
 # EVERY deploy including re-runs where everything is already up. A longer wait
 # costs nothing when the host is ready -- wait_for_connection returns as soon
 # as the connection succeeds.
-init_wait_timeout: 900
+#
+# 2400 = 40 minutes. Raised from 900 on 2026-09-20, after pp-bp-wkstn-4 failed
+# a cold build with
+#
+#   pp-bp-wkstn-4 : ok=0 changed=0 unreachable=0 failed=1 skipped=0
+#
+# -- zero tasks, meaning it failed this very wait and ran nothing else. The
+# same host was ok=72 in the previous build, so it is not a broken machine; it
+# is a cold boot that took longer than fifteen minutes. airfield-range reached
+# this figure ahead of us: 1800 was not enough there on 2026-09-15 with four
+# hosts still silent at the thirty-minute mark, and it has run at 2400 since.
+#
+# The ceiling is affordable ONLY because the Init play no longer carries
+# any_errors_fatal (see playbooks/00-baseline.yml). With that flag, a host
+# sitting here for forty minutes and then failing would take every other
+# Windows host in the play with it. Without it, it drops out alone and the
+# end-of-run coverage assertions remain the hard gate. Do not raise one
+# without checking the other.
+init_wait_timeout: 2400
 init_wait_delay: 15
 init_wait_sleep: 10
 
