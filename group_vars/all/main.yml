@@ -319,3 +319,14 @@ so_apt_lock_delay: 10
 # and lose the deploy. Set false to leave the host's own upgrade schedule
 # alone (the lock wait above still handles the race, just more slowly).
 so_disable_unattended_upgrades: true
+
+# --- Splunk verification app -----------------------------------------------
+# Lives HERE, not only in roles/splunk-verify-user/defaults, because
+# playbooks/75-endpoint.yml references it from a play that does not run that
+# role -- and role defaults are in scope only while their role runs. As a role
+# default alone the name is undefined at that point and the forwarder-coverage
+# gate dies on an undefined variable instead of checking anything.
+#
+# verify_vars.py flags exactly this shape ("defined only in role default(s)").
+splunk_verify_app: arbitr_verify
+splunk_verify_app_dir: "/opt/splunk/etc/apps/{{ splunk_verify_app }}"

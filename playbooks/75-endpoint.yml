@@ -391,14 +391,12 @@
   become: true
   gather_facts: false
   vars:
-    # splunk_verify_app_dir is a DEFAULT OF roles/splunk-verify-user, and role
-    # defaults are only in scope while that role runs. This play does not run
-    # it, so the bare name is undefined here and the gate would die on the
-    # first task with an undefined-variable error rather than checking
-    # anything. Resolved with an explicit fallback to the same path the role
-    # uses; if it ever is in scope, that value wins.
-    splunk_verify_bin: >-
-      {{ splunk_verify_app_dir | default('/opt/splunk/etc/apps/arbitr_verify') }}/bin/verify_data.sh
+    # splunk_verify_app_dir is defined in group_vars/all/main.yml, NOT only in
+    # roles/splunk-verify-user/defaults. That matters: this play does not run
+    # that role, and a role default is out of scope outside its own role, so
+    # as a default alone the name would be undefined here and this gate would
+    # die on an undefined variable rather than checking anything.
+    splunk_verify_bin: "{{ splunk_verify_app_dir }}/bin/verify_data.sh"
     # Basis is [windows], deliberately, matching verify_deployment.sh §13.
     # [members] is domain membership and excludes the DCs and both DMZ hosts --
     # the highest-value log sources here -- so anchoring on it would produce a

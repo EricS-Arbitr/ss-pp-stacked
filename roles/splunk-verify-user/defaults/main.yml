@@ -20,6 +20,10 @@ splunk_verify_role: arbitr_verify
 
 # Self-contained app so the role definition is removable in one directory and
 # never collides with Splunk's shipped authorize.conf.
+# splunk_verify_app / splunk_verify_app_dir now live in group_vars/all/main.yml.
+# They are referenced from playbooks/75-endpoint.yml, which does not run this
+# role, and a role default is out of scope there. Kept here as a fallback so
+# the role still works standalone; group_vars wins when both are present.
 splunk_verify_app: arbitr_verify
 splunk_verify_app_dir: "/opt/splunk/etc/apps/{{ splunk_verify_app }}"
 
