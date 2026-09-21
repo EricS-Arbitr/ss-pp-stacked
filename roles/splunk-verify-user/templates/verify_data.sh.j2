@@ -137,6 +137,27 @@ check_visibility() {
        | fields r'
 }
 
+# --- which hosts has Splunk actually HEARD FROM ---------------------------
+# Emits one `FWDHOST <lowercased host>` line per host that has sent anything at
+# all. Used by the forwarder-coverage gate in playbooks/75-endpoint.yml, which
+# diffs it against [splunk-forwarder] and fails the deploy on any host that is
+# configured to forward and has sent nothing.
+#
+# index=* on purpose, not index=windows: the forwarder group holds Linux hosts
+# and the SO sensors too, and those write to linux/zeek/suricata. Asking "has
+# this host sent ANYTHING" is the question coverage actually cares about.
+#
+# Raw search rather than tstats, matching check_visibility. tstats bypasses
+# search filters, so a blind account would report every host and the gate would
+# pass while seeing nothing -- the exact failure that version one of the
+# visibility gate had.
+check_fwd_coverage() {
+  run 'search index=*
+       | stats count AS n by host
+       | eval r="FWDHOST " . lower(host)
+       | fields r'
+}
+
 # --- what CAN this account see, and from when -----------------------------
 # The diagnostic that discriminates the three ways a grant goes wrong, in one
 # search. Run it when check_visibility fails:
@@ -308,6 +329,7 @@ check_so_no_host_logs() {
 
 case "${1:-all}" in
   visibility) check_visibility ;;
+  fwd_coverage) check_fwd_coverage ;;
   so_zeek)      check_so_zeek ;;
   so_suricata)  check_so_suricata ;;
   so_strelka)   check_so_strelka ;;

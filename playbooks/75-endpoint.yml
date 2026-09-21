@@ -363,3 +363,129 @@
              | difference(fleet_hosts.stdout_lines | map('trim') | list) }}
       when: missing | length > 0
   tags: [endpoint, agent]
+
+# --- The same gate, for the other SIEM ------------------------------------
+# ss-pp-stacked runs BOTH a Security Onion grid and a Splunk cluster, and 48
+# hosts carry both an Elastic Agent and a universal forwarder. Until
+# 2026-09-21 only one of those was gated inside the deploy: a host missing
+# from Fleet failed the run, while a host sending nothing to Splunk did not.
+# The Splunk equivalent lived in verify_deployment.sh, which runs separately
+# and afterwards, so a deploy could report SUCCESS with a host dark to Splunk.
+#
+# Two assertions, in this order, because they fail for different reasons:
+#
+#   1. CONFIGURATION. A Windows host in neither [splunk-forwarder] nor
+#      [splunk_forwarder_exempt] was never going to forward. This is pure
+#      inventory and needs no Splunk at all. It is the pp-dcs-ctrl case:
+#      [ot_servers] was never made a child of [splunk-forwarder], so a host
+#      sat dark and every count-based check reported a clean pass, because
+#      counting hosts that forward AGAINST the group that should forward can
+#      never see a host missing from the group.
+#
+#   2. ARRIVAL. A host configured to forward that Splunk has never heard
+#      from. Asked of Splunk, not of the host: a universal forwarder can be
+#      running, connected and correctly configured and still deliver nothing,
+#      which is exactly what a `service running` check calls a pass.
+- name: Verify forwarder coverage from Splunk
+  hosts: splunk_search_head
+  become: true
+  gather_facts: false
+  vars:
+    # splunk_verify_app_dir is a DEFAULT OF roles/splunk-verify-user, and role
+    # defaults are only in scope while that role runs. This play does not run
+    # it, so the bare name is undefined here and the gate would die on the
+    # first task with an undefined-variable error rather than checking
+    # anything. Resolved with an explicit fallback to the same path the role
+    # uses; if it ever is in scope, that value wins.
+    splunk_verify_bin: >-
+      {{ splunk_verify_app_dir | default('/opt/splunk/etc/apps/arbitr_verify') }}/bin/verify_data.sh
+    # Basis is [windows], deliberately, matching verify_deployment.sh §13.
+    # [members] is domain membership and excludes the DCs and both DMZ hosts --
+    # the highest-value log sources here -- so anchoring on it would produce a
+    # check that structurally could not report a dark DC.
+    forwarder_targets: >-
+      {{ (groups['splunk-forwarder'] | default([]))
+         | difference(groups['splunk_forwarder_exempt'] | default([]))
+         | unique | sort | list }}
+  tasks:
+    - name: Fail if a Windows host forwards to nothing and is not exempt
+      ansible.builtin.fail:
+        msg: |
+          These Windows hosts are in neither [splunk-forwarder] nor
+          [splunk_forwarder_exempt]:
+            {{ unconfigured | join(', ') }}
+
+          They will produce no Splunk telemetry, and no count-based check can
+          notice: counting forwarders against [splunk-forwarder] only ever
+          asks about hosts already in the group.
+
+          Either add them to [splunk-forwarder], or record the decision in
+          [splunk_forwarder_exempt] so it is a choice rather than an omission.
+      vars:
+        unconfigured: >-
+          {{ (groups['windows'] | default([]))
+             | difference(groups['splunk-forwarder'] | default([]))
+             | difference(groups['splunk_forwarder_exempt'] | default([]))
+             | sort | list }}
+      when: unconfigured | length > 0
+
+    - name: List the hosts Splunk has received events from
+      # cut -d. -f1 is load-bearing. Splunk's `host` field carries whatever the
+      # forwarder resolved for itself, which is the FQDN on a domain-joined
+      # host and the short name otherwise. Inventory names are short, so
+      # without this the diff finds nothing in common and the gate fails EVERY
+      # deploy while reporting all 51 hosts dark -- a check that cries wolf
+      # gets disabled, which is worse than not having it.
+      ansible.builtin.shell: |
+        {{ splunk_verify_bin }} fwd_coverage 2>/dev/null |
+          sed -n 's/^FWDHOST //p' | cut -d. -f1 | tr -d '\r' |
+          sed '/^$/d' | sort -u
+      args:
+        executable: /bin/bash
+      register: splunk_reporting
+      changed_when: false
+      failed_when: false
+
+    # Distinguish "Splunk says nobody reported" from "we could not ask Splunk".
+    # Without this, a broken search account reads as total forwarder failure
+    # and sends you to 51 healthy hosts.
+    - name: Fail if Splunk could not be queried at all
+      ansible.builtin.fail:
+        msg: |
+          Could not query Splunk for forwarder coverage (rc={{ splunk_reporting.rc }}).
+
+          This is a search problem, not a forwarder problem -- do not go
+          looking at the endpoints. Check:
+            {{ splunk_verify_bin }} visibility
+            {{ splunk_verify_bin }} whatsee
+      when: splunk_reporting.rc != 0
+
+    - name: Report forwarder coverage
+      ansible.builtin.debug:
+        msg: |
+          Splunk has heard from {{ splunk_reporting.stdout_lines | length }} hosts.
+          Expected {{ forwarder_targets | length }} forwarder targets.
+          Missing: {{ missing | join(', ') if missing else 'none' }}
+      vars:
+        missing: >-
+          {{ forwarder_targets | map('lower') | list
+             | difference(splunk_reporting.stdout_lines | map('trim') | list) }}
+
+    - name: Fail if any forwarder target has sent nothing
+      ansible.builtin.fail:
+        msg: |
+          These hosts are configured to forward but Splunk has received
+          nothing from them:
+            {{ missing | join(', ') }}
+
+          The forwarder installed but never connected, never started, or is
+          connected and delivering nothing. On one of them check:
+            Windows : C:\Program Files\SplunkUniversalForwarder\var\log\splunk\splunkd.log
+            Linux   : /opt/splunkforwarder/var/log/splunk/splunkd.log
+          and confirm outputs.conf points at the indexer peers.
+      vars:
+        missing: >-
+          {{ forwarder_targets | map('lower') | list
+             | difference(splunk_reporting.stdout_lines | map('trim') | list) }}
+      when: missing | length > 0
+  tags: [endpoint, splunk, forwarder_coverage]
