@@ -342,6 +342,26 @@ if [ -x "$SS_PP_AB/verify_task_keywords.py" ] && command -v python3 >/dev/null 2
   fi
 fi
 
+# HARD GATE. A task with two `when:` keys loses the first one -- YAML keeps the
+# last value and discards the earlier one without complaint, so a condition you
+# wrote is simply not running, and the file reads correctly because both lines
+# are right there. roles/dcpromo shipped an AD-services gate whose service
+# condition had been dead for months; the probe feeding it ran every deploy and
+# was read by nothing.
+#
+# yaml.safe_load() accepts duplicates silently, so no checker built on it can
+# see this. Ansible warns at RUN time, on stderr, one line deep in a
+# 26,000-line log. That is not a gate. This is.
+if [ -x "$SS_PP_AB/verify_dup_keys.py" ] && command -v python3 >/dev/null 2>&1; then
+  echo ""
+  echo "=== Verifying no duplicate YAML keys ==="
+  if ! python3 "$SS_PP_AB/verify_dup_keys.py" "$STAGE"; then
+    echo ""
+    echo "ERROR: refusing to build a tarball with logic that silently does not run."
+    exit 1
+  fi
+fi
+
 if [ -x "$SS_PP_AB/verify_vars.py" ] && command -v python3 >/dev/null 2>&1; then
   echo ""
   echo "=== Verifying Jinja var references ==="
