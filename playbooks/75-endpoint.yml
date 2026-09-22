@@ -436,7 +436,7 @@
       # gets disabled, which is worse than not having it.
       ansible.builtin.shell: |
         {{ splunk_verify_bin }} fwd_coverage 2>/dev/null |
-          sed -n 's/^FWDHOST //p' | cut -d. -f1 | tr -d '\r' |
+          tr -d '"\r' | sed -n 's/^FWDHOST_//p' | cut -d. -f1 |
           sed '/^$/d' | sort -u
       args:
         executable: /bin/bash
@@ -457,6 +457,36 @@
             {{ splunk_verify_bin }} visibility
             {{ splunk_verify_bin }} whatsee
       when: splunk_reporting.rc != 0
+
+    # EVERY target missing is not 51 dead forwarders, it is a broken check.
+    #
+    # On 2026-09-21 this gate failed a deploy that had otherwise passed,
+    # listing all 51 hosts as having sent nothing, because the search token
+    # emitted a value containing a space and Splunk's CSV export quoted it, so
+    # the consumer parsed zero hosts. Every host looked dark because none could
+    # be seen.
+    #
+    # A coverage check that can fail wholesale needs to tell the two apart, or
+    # its first bad day costs a deploy and its second gets it switched off. If
+    # nothing at all came back while targets exist, that is this task's problem
+    # and it says so instead of indicting the range.
+    - name: Fail if the coverage query returned nothing at all
+      ansible.builtin.fail:
+        msg: |
+          Splunk returned ZERO hosts while {{ forwarder_targets | length }}
+          forwarder targets are configured.
+
+          That is this check being blind, not the range being dark -- 51 hosts
+          do not stop forwarding at once. Treat it as a search or parsing
+          fault and do NOT go looking at the endpoints. Check, in order:
+            1. {{ splunk_verify_bin }} fwd_coverage
+               (expect one FWDHOST_<host> line per host; if the lines are
+                quoted or shaped differently, the sed above no longer matches)
+            2. {{ splunk_verify_bin }} visibility
+            3. {{ splunk_verify_bin }} whatsee
+      when:
+        - forwarder_targets | length > 0
+        - splunk_reporting.stdout_lines | length == 0
 
     - name: Report forwarder coverage
       ansible.builtin.debug:

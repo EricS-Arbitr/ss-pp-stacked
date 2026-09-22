@@ -152,9 +152,17 @@ check_visibility() {
 # pass while seeing nothing -- the exact failure that version one of the
 # visibility gate had.
 check_fwd_coverage() {
+  # FWDHOST_ with an UNDERSCORE and no space, matching every other token here
+  # (DM_SRC_OK_12_sources, SURICATA_OK_400_events). That convention is not
+  # cosmetic: run() asks for output_mode=csv, and Splunk quotes any field
+  # containing a space. "FWDHOST pp-dc01" came back as
+  #     "FWDHOST pp-dc01"
+  # with the quotes, the consumer parsed zero hosts, and the coverage gate
+  # reported all 51 forwarder targets dark on a range where Splunk was working
+  # -- failing a deploy that had otherwise passed. 2026-09-21.
   run 'search index=*
        | stats count AS n by host
-       | eval r="FWDHOST " . lower(host)
+       | eval r="FWDHOST_" . lower(host)
        | fields r'
 }
 
