@@ -129,6 +129,11 @@
   set_fact:
     splunk_service: "SplunkForwarder"
 
+# An explicit ceiling: win_reboot defaults to 600, and 600 is not a cold
+# Windows boot on freshly provisioned hardware -- airfield-range lost two
+# members outright to that default on 2026-09-22. Matching the 1800 used
+# everywhere else. A ceiling, not a delay.
 - name: "Reboot after install when needed"
   ansible.windows.win_reboot:
+    reboot_timeout: 1800
   when: splunk_install_result is changed
