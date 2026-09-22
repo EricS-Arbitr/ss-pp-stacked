@@ -31,6 +31,17 @@
 # without checking the other.
 init_wait_timeout: 2400
 
+# --- Stability gate (see tasks/wait_stable.yml) ---------------------------
+# How long a host must have been up before the run configures it. A host that
+# has been up three minutes when init reaches it waits zero seconds.
+init_stable_uptime: 180
+# Budget for a host that is REACHABLE but still rebooting or servicing.
+init_stable_retries: 80
+# Budget for one that vanished mid-probe. Generous on purpose: a customer
+# watching the provisioning UI can reprovision a bad workstation, and this
+# window is what lets the run pick it up rather than forcing another attempt.
+init_stable_recover_timeout: 1800
+
 # How long a host may have NO ROUTE from the controller before init declares it
 # absent rather than slow. 20 x 15s = 5 minutes.
 #

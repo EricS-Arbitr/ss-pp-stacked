@@ -79,6 +79,14 @@
     delay: "{{ init_wait_delay }}"
     sleep: "{{ init_wait_sleep }}"
 
+# Between "it answered" and "we start configuring it". See wait_stable.yml:
+# wait_for_connection returns on the first successful connection, which a host
+# mid-provisioning can give while still about to reboot. Five workstations on
+# this range died on the FIRST task of `common` on 2026-09-22, having passed
+# every init task.
+- name: Require the host to be stably up before configuring it
+  ansible.builtin.include_tasks: wait_stable.yml
+
 # =========================================================================
 # Repair AND PIN the default-gateway ARP entry before anything routes
 # =========================================================================
