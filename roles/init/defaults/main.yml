@@ -50,7 +50,23 @@ init_stable_recover_timeout: 1800
 # pp-bp-wkstn-4 produced it identically in all three attempts of a 7h25m build
 # on 2026-09-20. Without this, raising the ceiling to 2400 would have made that
 # host cost 40 minutes per attempt instead of 15, on a run doomed either way.
-init_noroute_retries: 20
+# 120 x 15s = 30 MINUTES, matching init_stable_recover_timeout. Was 20 (five
+# minutes) until 2026-09-22, which was inconsistent in the wrong direction: a
+# host that appeared and then vanished got thirty minutes to come back, while
+# one that never appeared at all got five.
+#
+# The fast-fail exists for its DIAGNOSIS, not its speed. EHOSTUNREACH means
+# ARP never resolved and the host is not on the network -- a different fault
+# from a slow boot, needing a different response -- and saying so plainly is
+# the value. Saying it after five minutes is not.
+#
+# Thirty minutes is sized against how this is actually operated: SimSpace
+# customers watch provisioning state in a UI, not these logs. A workstation
+# that failed to provision is visible to them, they can reprovision that one
+# system, and this window is what lets attempt 1 pick it up rather than the
+# run failing and costing a full extra pass. Five minutes was far shorter than
+# anyone can notice and act.
+init_noroute_retries: 120
 init_wait_delay: 15
 init_wait_sleep: 10
 

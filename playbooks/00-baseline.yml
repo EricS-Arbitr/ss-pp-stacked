@@ -33,9 +33,26 @@
 
             {{ (ansible_play_hosts_all | difference(ansible_play_hosts)) | sort | join(', ') }}
 
-          Each waited up to {{ init_wait_timeout }}s for WinRM and never
-          answered. They are excluded from every later play, so they will have
-          no AD join, no Sysmon and no Elastic Agent.
+          They are excluded from every later play, so they will have no AD
+          join, no Sysmon and no Elastic Agent.
+
+          WHY EACH ONE DROPPED IS NOT THE SAME, and this list does not say.
+          Grep the log for the host to find out:
+
+            "has no route from the controller"
+                never on the network at all -- ARP never resolved. A
+                platform-side problem: check the VM exists, is powered on, and
+                has its mgmt NIC on the right network.
+            "wait for Windows systems to be online"
+                on the network but never answered WinRM within
+                {{ init_wait_timeout }}s. Usually still provisioning.
+            "Require the host to be stably up"
+                answered, but kept rebooting or never settled.
+
+          This message used to claim all three waited {{ init_wait_timeout }}s
+          for WinRM. That was wrong for the first case, which fails earlier and
+          for a different reason, and a summary that misattributes a cause
+          sends you to the wrong place.
 
           The deploy CONTINUES for the {{ ansible_play_hosts | length }} hosts that did come up, and
           will fail at the end-of-run coverage checks naming exactly what is
