@@ -25,6 +25,17 @@
     # ansible_play_hosts_all is every host the play started with;
     # ansible_play_hosts is those still alive. The difference is exactly the
     # set that went unreachable or failed inside init.
+    # THE THREE CAUSES ARE LISTED SEPARATELY ON PURPOSE. This message asserted
+    # a single cause -- "each waited 2400s for WinRM" -- until 2026-09-23, and
+    # that is untrue of a host which fails the no-route classifier minutes
+    # earlier for an entirely different reason. On the 2026-09-22 ss-pp-stacked
+    # build both messages printed about pp-dc01, five minutes apart, saying
+    # different things. A summary that misattributes a cause sends you to the
+    # wrong place, which is the same defect as a task name that names the wrong
+    # host.
+    #
+    # Keep the WHY out of the message itself: an operator reading this mid-run
+    # needs the three log strings, not the history of the paragraph.
     - name: Report Windows hosts that never came online
       ansible.builtin.debug:
         msg: |
@@ -48,11 +59,6 @@
                 {{ init_wait_timeout }}s. Usually still provisioning.
             "Require the host to be stably up"
                 answered, but kept rebooting or never settled.
-
-          This message used to claim all three waited {{ init_wait_timeout }}s
-          for WinRM. That was wrong for the first case, which fails earlier and
-          for a different reason, and a summary that misattributes a cause
-          sends you to the wrong place.
 
           The deploy CONTINUES for the {{ ansible_play_hosts | length }} hosts that did come up, and
           will fail at the end-of-run coverage checks naming exactly what is
