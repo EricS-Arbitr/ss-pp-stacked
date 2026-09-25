@@ -36,7 +36,7 @@ init_wait_timeout: 2400
 # has been up three minutes when init reaches it waits zero seconds.
 init_stable_uptime: 180
 # Budget for a host that is REACHABLE but still rebooting or servicing.
-init_stable_retries: 80
+init_stable_retries: 40
 # Budget for one that vanished mid-probe. Generous on purpose: a customer
 # watching the provisioning UI can reprovision a bad workstation, and this
 # window is what lets the run pick it up rather than forcing another attempt.
