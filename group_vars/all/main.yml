@@ -282,6 +282,13 @@ global_dns_records:
 vault_so_web_password: "Simspace1!Simspace1!"     # SOC web login
 vault_so_remote_password: "Simspace1!Simspace1!"  # SOREMOTEPASS — grid join
 
+# Malcolm OT appliance (pp-ot-malcolm). SSH = the Expanded image's xadmin
+# password; admin = the Malcolm web UI (analyst) login; arkime = the Arkime
+# session-store secret (random, used internally). Plaintext per the note above.
+vault_malcolm_ssh_password: "PocketFullofShellCod3!"
+vault_malcolm_admin_password: "Malcolm!Analyst2026"
+vault_malcolm_arkime_secret: "13fc33e3454c9dd02e77ec49a514512e435f3b68247d2d844cbc07d7e299735e"
+
 # --- Mirror fidelity threshold -------------------------------------------
 # Ceiling on Zeek's own capture_loss, asserted by playbooks/60-verify.yml.
 # 5% is generous for a working mirror; this range sat at ~50% from the day it

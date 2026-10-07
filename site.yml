@@ -63,3 +63,8 @@
 # manager that is actually green, and Fleet has to be answering before an agent
 # can register with it.
 - import_playbook: playbooks/75-endpoint.yml
+
+# Malcolm OT deep-packet appliance (pp-ot-malcolm). Independent of the SO grid
+# and Splunk — installs/host-preps/runs the Malcolm stack and brings up its GRE
+# mirror decap. Last because it has no dependency on the phases above.
+- import_playbook: playbooks/90-malcolm.yml
