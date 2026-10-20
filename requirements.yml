@@ -1,8 +1,12 @@
 # Ansible Galaxy requirements for this overlay.
-# Install on the Ansible controller with:
-# deploy.sh installs these automatically. To do it by hand:
-#   HTTPS_PROXY=http://10.255.240.1:3128 ansible-galaxy collection install \
-#       -r /etc/ansible/requirements.yml -p "$HOME/.ansible/collections" --force
+#
+# NEXUS SOURCING (2026-10-20): every collection is pulled as a built artifact
+# tarball from the in-platform Nexus (ng_raw/galaxy) instead of galaxy.ansible.com.
+# Nexus resolves + is reached ONLY through the mgmt proxy, and presents an
+# internal-CA cert, so deploy.sh installs these with HTTPS_PROXY set AND
+# --ignore-certs. pfsensible.core is also vendored in collections/ and installed
+# offline first; the Windows/AD/docker collections continue to come from the
+# controller's bundled ansible package (never galaxy.ansible.com).
 #
 # DO NOT run this under sudo. It installs into root's home, which the deploy
 # account cannot read and the playbook run does not search -- galaxy reports
@@ -10,16 +14,12 @@
 # three failed deploy attempts on 2026-09-02.
 ---
 collections:
-  - name: pfsensible.core
-    version: ">=0.7.1"
+  - name: https://nexus.dev.ng.simspace.lan/repository/ng_raw/galaxy/pfsensible-core-0.7.1.tar.gz
 
   # --- Security Onion, added with the SO port 2026-09-01 ---
   # VyOS: gretap tunnel + tc mirror config on the mirror routers
-  - name: vyos.vyos
-    version: ">=4.0.0"
+  - name: https://nexus.dev.ng.simspace.lan/repository/ng_raw/galaxy/vyos-vyos-6.0.0.tar.gz
   # network_cli transport for vyos.vyos, and the ipaddr filter
-  - name: ansible.netcommon
-    version: ">=5.0.0"
+  - name: https://nexus.dev.ng.simspace.lan/repository/ng_raw/galaxy/ansible-netcommon-8.6.2.tar.gz
   # sysctl / mount on the SO nodes
-  - name: ansible.posix
-    version: ">=1.5.0"
+  - name: https://nexus.dev.ng.simspace.lan/repository/ng_raw/galaxy/ansible-posix-2.2.2.tar.gz
