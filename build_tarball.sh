@@ -229,6 +229,7 @@ fi
 # Other deployment files
 cp -R "$SS_PP_AB/host_vars"               "$STAGE/"
 cp -R "$SS_PP_AB/group_vars"              "$STAGE/"
+cp    "$SS_PP_AB/ansible.cfg"             "$STAGE/"   # carries vault_password_file
 
 # Security Onion additions (2026-09-01). site.yml orchestrates the range
 # playbook plus the SO phases; playbooks/ holds those phases; rules/ carries
@@ -388,7 +389,7 @@ fi
 # --- Pack ------------------------------------------------------------------
 
 cd "$STAGE"
-TAR_PATHS=(roles host_vars group_vars hosts site.yml playbooks rules deploy.sh)
+TAR_PATHS=(roles host_vars group_vars hosts site.yml playbooks rules deploy.sh ansible.cfg)
 [ -d "collections" ] && TAR_PATHS+=(collections)
 [ -f "verify_deployment.sh" ] && TAR_PATHS+=(verify_deployment.sh)
 [ -f "requirements.yml" ] && TAR_PATHS+=(requirements.yml)

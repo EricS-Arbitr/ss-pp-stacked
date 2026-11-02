@@ -1,5 +1,5 @@
 domain_admin: "simspace"
-domain_admin_password: "Simspace1!Simspace1!"
+domain_admin_password: "{{ vault_domain_admin_password }}"
 cs_certs:
   - "https://nexus.dev.ng.simspace.lan/repository/ng_raw/certificates/DigiCertHighAssuranceEVRootCA.crt"
   - "https://nexus.dev.ng.simspace.lan/repository/ng_raw/certificates/DigiCertGlobalRootG2.crt"
@@ -15,9 +15,9 @@ global_dns_container_name: "is-inet"
 
 # Splunk server + forwarder shared config
 splunk_admin: "admin"
-splunk_admin_password: "simspace1"
+splunk_admin_password: "{{ vault_splunk_admin_password }}"
 splunk_user: "admin"
-splunk_password: "simspace1"
+splunk_password: "{{ vault_splunk_password }}"
 # splunk_server_ip: RETIRED 2026-08-19. It meant "the indexer" and pointed at
 # 172.16.9.20, which is now the ES search head and receives nothing. Retired
 # rather than redefined so nothing inherits the old meaning by accident.
@@ -49,7 +49,7 @@ splunk_cluster_label: "pp-idxc"
 # search head -- a mismatch shows up as peers that never appear in
 # `splunk show cluster-status`, with the reason only in splunkd.log.
 # Plaintext here to match splunk_admin_password above; this repo has no vault.
-splunk_cluster_secret: "Simspace1!ClusterSecret"
+splunk_cluster_secret: "{{ vault_splunk_cluster_secret }}"
 
 # Indexes the cluster must serve. These are pushed to the PEERS through the
 # cluster manager's manager-apps, never created on a peer directly -- a peer
@@ -79,7 +79,7 @@ splunk_cluster_indexes:
 # existing convention above -- this repo has no vault; moving ALL Splunk
 # credentials behind one is a separate decision, not a side effect of adding
 # a verification account.
-splunk_verify_password: "simspace1"
+splunk_verify_password: "{{ vault_splunk_verify_password }}"
 
 # --- Windows DNS Server query logging (pp-dc01/02/03) ---------------------
 # Splunk_TA_windows ships NO input for the modern
@@ -269,25 +269,11 @@ global_dns_records:
     zone: "outlook.com"
 
 # =========================================================================
-# Security Onion credentials
+# Security Onion + Malcolm credentials
 # =========================================================================
-# PLAINTEXT, matching this repo's existing convention -- domain_admin_password
-# and splunk_admin_password above are plaintext too. ss-pp-so vaults these; a
-# half-vaulted repo is worse than either choice made consistently, and it would
-# add a /home/simspace/.vault_pass dependency this range does not otherwise
-# have.
-#
-# The variable names keep their `vault_` prefix so the ported SO roles work
-# unmodified -- the prefix now signals "credential", not "encrypted".
-vault_so_web_password: "Simspace1!Simspace1!"     # SOC web login
-vault_so_remote_password: "Simspace1!Simspace1!"  # SOREMOTEPASS — grid join
-
-# Malcolm OT appliance (pp-ot-malcolm). SSH = the Expanded image's xadmin
-# password; admin = the Malcolm web UI (analyst) login; arkime = the Arkime
-# session-store secret (random, used internally). Plaintext per the note above.
-vault_malcolm_ssh_password: "PocketFullofShellCod3!"
-vault_malcolm_admin_password: "Malcolm!Analyst2026"
-vault_malcolm_arkime_secret: "13fc33e3454c9dd02e77ec49a514512e435f3b68247d2d844cbc07d7e299735e"
+# Vaulted: the vault_so_* and vault_malcolm_* values live in
+# group_vars/all/vault.yml (ansible-vault), decrypted at runtime via the
+# vault_password_file in ansible.cfg.
 
 # --- Mirror fidelity threshold -------------------------------------------
 # Ceiling on Zeek's own capture_loss, asserted by playbooks/60-verify.yml.
