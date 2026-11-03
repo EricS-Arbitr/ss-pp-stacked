@@ -439,8 +439,8 @@ defender's view changing shape.
 
 ```
 cd /etc/ansible
-wget -q -O ab_pp.tgz <tarball URL for the pinned commit>
-tar -xzf ab_pp.tgz
+wget -q -O powerplant_full_stack.tgz <tarball URL for the pinned commit>
+tar -xzf powerplant_full_stack.tgz
 sudo ./deploy.sh
 ```
 

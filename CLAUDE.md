@@ -19,7 +19,7 @@ Security-Onion-only range; `ss-pp-ab` is the Splunk-only one.
 inventory, host_vars, group_vars, custom roles, the baseline playbook
 (`playbooks/00-baseline.yml`) and the Security Onion phases (`playbooks/`).
 `build_tarball.sh` bundles selected base roles plus the overlays into
-`ab_pp.tgz`, which extracts to `/etc/ansible` on the controller where
+`powerplant_full_stack.tgz`, which extracts to `/etc/ansible` on the controller where
 `deploy.sh` runs `site.yml`.
 
 ## Repo layout
@@ -37,7 +37,7 @@ ss-pp-stacked/
 ├── host_vars/                   ← one yaml per managed host
 ├── roles/                       ← custom roles overriding or supplementing base roles
 ├── blueprints/                  ← the SimSpace blueprint this range is built from
-├── build_tarball.sh             ← auto-discovers roles, validates, bundles ab_pp.tgz
+├── build_tarball.sh             ← auto-discovers roles, validates, bundles powerplant_full_stack.tgz
 ├── deploy.sh                    ← runs site.yml (see the retry model below)
 ├── verify_vars.py               ← Jinja-var presence checker
 ├── verify_shell_args.py         ← ★ refuses plays Ansible's split_args() cannot parse
@@ -45,7 +45,7 @@ ss-pp-stacked/
 ├── verify_deployment.sh         ← post-deploy checks
 ├── collections/                 ← vendored pfsensible.core (never fetched at deploy time)
 ├── rules/                       ← bundled ETOPEN ruleset
-└── ab_pp.tgz                    ← built artifact; rebuild with build_tarball.sh
+└── powerplant_full_stack.tgz                    ← built artifact; rebuild with build_tarball.sh
 ```
 
 Custom roles beyond the base repo, grouped by what they build:

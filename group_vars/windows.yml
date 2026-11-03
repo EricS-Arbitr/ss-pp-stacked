@@ -2,8 +2,8 @@
 #
 # On the 1.2.x images (blueprint 0.1.26 and later) every Windows image —
 # workstation AND server (10, 11, Server 2019/2022, Flare) — ships the local
-# account `xadmin` / `ConfigingInTheNameOf1!`. This is the single source of
-# truth; win10.yml / win11.yml no longer override it.
+# account `xadmin` (password vaulted as vault_windows_xadmin_password). This is
+# the single source of truth; win10.yml / win11.yml no longer override it.
 #
 # NOT the same thing as domain_admin in group_vars/all.yml. That account is
 # `simspace`, CREATED BY THE DEPLOY during DC promotion -- it is not supplied
@@ -17,7 +17,7 @@ ansible_connection: winrm
 ansible_winrm_transport: ntlm
 ansible_port: 5985
 ansible_user: xadmin
-ansible_password: "ConfigingInTheNameOf1!"
+ansible_password: "{{ vault_windows_xadmin_password }}"
 ansible_python_interpreter: python
 ansible_become_method: runas
 ansible_become_user: xadmin
