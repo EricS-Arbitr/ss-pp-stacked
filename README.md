@@ -11,14 +11,14 @@ worked in either tool.
 This is an overlay, not a standalone playbook. It layers on the customer's
 shared platform repo at `../range-development-ansible/`: that repo ships base
 roles, this one ships the range's inventory, variables, custom roles and
-playbooks. `build_tarball.sh` combines the two into `ab_pp.tgz`, which is
+playbooks. `build_tarball.sh` combines the two into `powerplant_full_stack.tgz`, which is
 extracted to `/etc/ansible` on the range's Ansible controller.
 
 ## Build and deploy
 
 ```bash
-./build_tarball.sh          # -> ab_pp.tgz  (validates before it writes)
-# copy ab_pp.tgz to the controller, extract to /etc/ansible, then:
+./build_tarball.sh          # -> powerplant_full_stack.tgz  (validates before it writes)
+# copy powerplant_full_stack.tgz to the controller, extract to /etc/ansible, then:
 ./deploy.sh                 # site.yml, up to 3 attempts
 BOOT_DELAY=0 ./deploy.sh    # skip the boot wait on an already-up range
 ```

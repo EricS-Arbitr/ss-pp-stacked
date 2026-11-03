@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Build ab_pp.tgz for deployment.
+# Build powerplant_full_stack.tgz for deployment.
 #
 # Auto-discovers roles referenced by every playbook under playbooks/ (and their meta
 # dependencies), then bundles:
@@ -23,7 +23,7 @@ set -euo pipefail
 SS_PP_AB="$(cd "$(dirname "$0")" && pwd)"
 SRC_BASE="$(cd "$SS_PP_AB/../range-development-ansible" && pwd)"
 PLAYBOOK="$SS_PP_AB/playbooks/00-baseline.yml"
-ARCHIVE="$SS_PP_AB/ab_pp.tgz"
+ARCHIVE="$SS_PP_AB/powerplant_full_stack.tgz"
 STAGE_PARENT="$(mktemp -d)"
 STAGE="$STAGE_PARENT/abpp_build"
 
