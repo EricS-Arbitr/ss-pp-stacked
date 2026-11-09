@@ -1275,7 +1275,7 @@
 # Management plane carries NO AD traffic — enforced, not assumed
 # =============================================================================
 # REQUIREMENT (Eric, 2026-08-17): no range-generated AD/LDAP traffic may cross
-# 10.255.240.0/20. CLAUDE.md §8 already says the management plane is
+# 10.255.240.0/20. BUILD_SPEC.md §8 already says the management plane is
 # out-of-band and invisible in-scenario; this play makes that enforceable.
 #
 # WHY A SECOND PASS. "Strip mgmt interface from AD DNS registration" and
@@ -1683,7 +1683,7 @@
           Clients resolving a DC name get both its production and its
           10.255.240.x address and round-robin between them, so roughly half of
           all Kerberos/LDAP/RPC traffic crosses the management plane. That
-          violates CLAUDE.md §8 and exposes out-of-scenario infrastructure to
+          violates BUILD_SPEC.md §8 and exposes out-of-scenario infrastructure to
           anyone hunting in the SIEM.
 
           A record that comes BACK after being deleted is being re-registered,

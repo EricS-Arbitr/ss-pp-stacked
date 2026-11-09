@@ -19,3 +19,7 @@ id_ed25519*
 **/.DS_Store
 *.bak
 *.bak.*
+
+# local editor / patch backups (never commit)
+*.orig
+*.backup-*

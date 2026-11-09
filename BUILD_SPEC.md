@@ -1,6 +1,6 @@
-# CLAUDE.md — ss-pp-stacked onboarding guide
+# BUILD_SPEC.md — ss-pp-stacked onboarding guide
 
-Guidance for Claude Code (claude.ai/code) and for humans picking up this
+Onboarding guide for developers picking up this
 range overlay. Read this first.
 
 ## What this project is
@@ -26,7 +26,7 @@ inventory, host_vars, group_vars, custom roles, the baseline playbook
 
 ```
 ss-pp-stacked/
-├── CLAUDE.md                    ← you are here
+├── BUILD_SPEC.md                    ← you are here
 ├── README.md                    ← what this repo is, build/deploy in brief
 ├── site.yml                     ← ★ the entry point
 ├── playbooks/00-baseline.yml      ← the range baseline AND the whole Splunk build

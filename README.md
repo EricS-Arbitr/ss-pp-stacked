@@ -74,7 +74,7 @@ covers that if it is wanted here.
 
 | File | For |
 |---|---|
-| `CLAUDE.md` | working on this repo — layout, conventions, pitfalls, recipes |
+| `BUILD_SPEC.md` | working on this repo — layout, conventions, pitfalls, recipes |
 | `blueprints/` | the SimSpace blueprint this range is built from |
 
 This repo has no `UPSTREAM_FIXES.md` of its own. Customer-repo bugs and the
