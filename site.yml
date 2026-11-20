@@ -50,6 +50,12 @@
 # Safe to hoist: nothing ahead of it ever targeted the controller.
 - import_playbook: playbooks/10-mirror.yml
 
+# Point every managed Ubuntu host's apt at the in-platform per-release Nexus
+# repos BEFORE the baseline installs anything, so apt (and Docker CE) come from
+# Nexus rather than archive.ubuntu.com / download.docker.com. Archive stays as a
+# lower-priority fallback.
+- import_playbook: playbooks/12-nexus-apt.yml
+
 - import_playbook: playbooks/00-baseline.yml
 
 - import_playbook: playbooks/05-time.yml
