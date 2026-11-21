@@ -11,6 +11,9 @@ distributed Security Onion grid and a distributed Splunk cluster. Endpoints feed
 both; network evidence is Security Onion's; the host and device log sources
 (nginx, Squid, pfSense, VyOS) reach Splunk.
 
+For scenario framing, cyber key-terrain tiering and the intentional-vulnerability
+catalogue, see [`SCENARIO_AND_KEY_TERRAIN.md`](SCENARIO_AND_KEY_TERRAIN.md).
+
 ---
 
 ## At a glance
