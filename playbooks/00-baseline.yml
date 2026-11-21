@@ -1022,7 +1022,7 @@
     - aue_agent
     - drainhole
 
-- name: configure hunt 
+- name: configure hunt
   hosts: hunt
   gather_facts: false
   roles:
@@ -1031,6 +1031,15 @@
   tags:
     - chrome
     - autologin
+
+- name: SOC hunt/analyst browser bookmarks (security suite)
+  hosts: hunt
+  gather_facts: true   # browser_bookmarks keys on ansible_os_family
+  roles:
+    - browser_bookmarks
+  tags:
+    - browser_bookmarks
+    - bookmarks
 
 # =============================================================================
 # Distributed Splunk — cluster manager, then peers

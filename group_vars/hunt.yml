@@ -1,0 +1,8 @@
+---
+# SOC hunt/analyst workstations (win-hunt-*) — managed Chrome bookmarks to the
+# range's security suite. ss-pp-stacked runs both SIEMs + Malcolm.
+browser_bookmarks_folder: "Security Suite"
+browser_bookmarks:
+  - { name: "Security Onion", url: "https://172.16.9.30" }        # so-manager SOC web
+  - { name: "Splunk", url: "http://172.16.9.20:8000" }            # pp-splunk search head
+  - { name: "Malcolm (OT DPI)", url: "https://192.168.90.130" }   # pp-ot-malcolm
